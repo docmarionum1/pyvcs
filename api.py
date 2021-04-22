@@ -36,3 +36,8 @@ players are associated with missles
 balls share color with playfield
 
 pyvcs.Ball
+
+Maybe the user provides a scanline(i) function which fires once per scanline and that's
+what keeps the user code in sync with the machine. Then there'd be no horizontal timing
+(which there already isn't), it would just be a question of setting up all of the objects
+that need to be rendered on that scanline.

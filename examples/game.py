@@ -1,4 +1,4 @@
-from game_lib import helper
+from .game_lib import helper
 #from pyvcs import set_background
 
 def bar(a):
@@ -31,9 +31,10 @@ def foo():
 #
 # game()
 
-background = 0
+background = 128
+pyvcs.set_background(255)
 ball = pyvcs.Ball(4)
-pyvcs.set_playfield([255, 128, 0])
+pyvcs.set_playfield(255)
 x = 0
 y = 0
 pyvcs.wait_for_vsync()
@@ -59,10 +60,10 @@ while True:
     #for i in range(x):
     #    pass
 
-    pyvcs.set_playfield([background])
+    pyvcs.set_playfield(background)
 
     # Vertical positioning
-    for i in range(y):
+    for i in range(y + 63):
         pyvcs.wait_for_hsync()
 
     # Enable with x

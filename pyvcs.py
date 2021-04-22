@@ -1,10 +1,10 @@
 from argparse import Namespace
 import array
 import ctypes
+from pathlib import Path
 import sys
 import time
 
-#import cv2
 import numpy as np
 import sdl2
 import sdl2.ext
@@ -12,28 +12,18 @@ import sdl2.ext
 RESOLUTION = (192, 108)
 FRAME = [0] * (RESOLUTION[0] * RESOLUTION[1] * 1)
 FRAME = array.array('B', FRAME)
+HBLANK = 63
+VBLANK = 63
+
 MV = memoryview(FRAME).cast("B")
-#MV_PTR = ctypes.c_void_p(MV.buffer_info()[0])
 FRAME_PTR = ctypes.c_void_p(FRAME.buffer_info()[0])
 
-#cv2.namedWindow("window", cv2.WND_PROP_FULLSCREEN)
-#cv2.setWindowProperty("window", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
 sdl2.ext.init()
-#print(dir(sdl2.ext.window))#.get_display_mode())
-#print(sdl2.SDL_GetDisplayMode())
-window = sdl2.ext.Window("window", size=RESOLUTION)#, size=RESOLUTION)#, flags=sdl2.SDL_WINDOW_FULLSCREEN)
-#sdl2.SDL_SetWindowSize(window.window, RESOLUTION[0], RESOLUTION[1])
-#mode = sdl2.SDL_DisplayMode()
-#print(mode)
-#mode.w = RESOLUTION[0]
-#mode.h = RESOLUTION[1]
-#print(mode)
-#mode.format = sdl2.SDL_PIXELFORMAT_RGB332
-#sdl2.SDL_SetWindowDisplayMode(window.window, mode)
+window = sdl2.ext.Window("window", size=RESOLUTION, flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
 
 #window.maximize()
-sdl2.SDL_SetWindowFullscreen(window.window, sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
+#sdl2.SDL_SetWindowFullscreen(window.window, sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
 renderer = sdl2.ext.Renderer(window, logical_size=RESOLUTION, flags=sdl2.SDL_RENDERER_ACCELERATED)
 #window.show()
 
@@ -63,34 +53,29 @@ class SetTrace(object):
     def __exit__(self, ext_type, exc_value, traceback):
         sys.settrace(None)
 
-BACKGROUND_COLOR = [0, 0, 0]
+BACKGROUND_COLOR = 0
 
 def set_background(color):
     global BACKGROUND_COLOR
+    HELL_YEAH = True
     BACKGROUND_COLOR = color
 
-PLAYFIELD_COLOR = [0, 0, 0]
+PLAYFIELD_COLOR = 0
 BALLS = []
-X = 0
-Y = 0
+X = -HBLANK
+Y = -VBLANK
 
 def set_playfield(color):
     global PLAYFIELD_COLOR
     PLAYFIELD_COLOR = color
 
 def write_color_to_frame(color):
-    i = Y*RESOLUTION[0]*1 + X*1
-    FRAME[i] = color[0]
-    #FRAME[i + 1] = color[1]
-    #FRAME[i + 2] = color[2]
+    i = Y*RESOLUTION[0] + X
+    FRAME[i] = color
 
 class Ball:
     def __init__(self, width):#, color=None):
         self.width = width
-
-        #if color:
-        #    global COLOR
-        #    COLOR = color
         self.enabled = False
         self.x = 0
         BALLS.append(self)
@@ -103,11 +88,8 @@ class Ball:
         self.enabled = True
 
     def disable(self):
-        #print("hi")
-        #print(Y)
         self.enabled = False
 
-#WAIT_FOR_HSYNC = False
 HSYNC = False
 WAIT_FOR_HSYNC = False
 
@@ -156,6 +138,14 @@ def display_step():
         X += 1
         return
 
+    if Y < 0:
+        X += 1
+        if X == RESOLUTION[0]:
+            HSYNC = True
+            X = -HBLANK
+            Y += 1
+        return
+
     wrote_pixel = False
     for ball in BALLS:
         #print(X, ball.x)
@@ -172,10 +162,10 @@ def display_step():
     X += 1
     if X == RESOLUTION[0]:
         HSYNC = True
-        X = -64
+        X = -HBLANK
         Y += 1
         if Y == RESOLUTION[1]:
-            Y = 0
+            Y = -VBLANK
 
             # frame = np.array(FRAME, dtype=np.uint8).reshape(
             #     (RESOLUTION[1], RESOLUTION[0], 1)
@@ -224,7 +214,6 @@ def display_step():
 
 def monitor(frame, event, arg):
     #global HYSNC, WAIT_FOR_HSYNC
-
     if "USER_CODE" not in frame.f_globals and "USER_CODE" not in frame.f_locals:# and (not frame.f_back or "USER_CODE" not in frame.f_back.f_globals):
     #if "USER_CODE" not in frame.f_globals:
         frame.f_trace_opcodes = False
@@ -232,22 +221,33 @@ def monitor(frame, event, arg):
 
     frame.f_trace_opcodes = True
 
-    #if
+
+
+    if "HELL_YEAH" in frame.f_locals:
+        print("HELL NO")
+        1/0
 
     if (HSYNC and WAIT_FOR_HSYNC) or (VSYNC and WAIT_FOR_VSYNC):
-        return monitor
+       return monitor
 
     if event == "opcode":
         # Do three system steps and then return
-        display_step()
-        display_step()
-        display_step()
+        for i in range(3):
+            #if (HSYNC and WAIT_FOR_HSYNC) or (VSYNC and WAIT_FOR_VSYNC):
+            #    return monitor
+            display_step()
+        #display_step()
+        #display_step()
+        #display_step()
 
     return monitor
 
 def main():
     with SetTrace(monitor):
-        exec(open(sys.argv[1]).read(), {"USER_CODE": True, "pyvcs":  Namespace(**globals())})
+        exec(open(sys.argv[1]).read(), {
+            "USER_CODE": True, "pyvcs":  Namespace(**globals()),
+            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
+        })
 
 if __name__ == '__main__':
     main()
