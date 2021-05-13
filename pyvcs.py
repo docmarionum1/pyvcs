@@ -21,26 +21,12 @@ FRAME_PTR = ctypes.c_void_p(FRAME.buffer_info()[0])
 
 sdl2.ext.init()
 window = sdl2.ext.Window("window", size=RESOLUTION, flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
-
-#window.maximize()
-#sdl2.SDL_SetWindowFullscreen(window.window, sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
 renderer = sdl2.ext.Renderer(window, logical_size=RESOLUTION, flags=sdl2.SDL_RENDERER_ACCELERATED)
-#window.show()
-
-#window_surface = sdl2.SDL_GetWindowSurface(window.window)
-#window_array = sdl2.ext.pixels3d(window_surface.contents, False)
-#surface = sdl2.SDL_CreateRGBSurface(0, RESOLUTION[0], RESOLUTION[1], 8, 0, 0, 0, 0)
 surface = sdl2.SDL_CreateRGBSurfaceWithFormat(0, *RESOLUTION, 8, sdl2.SDL_PIXELFORMAT_RGB332)
-
-#surface_array = sdl2.ext.pixels3d(surface.contents, False)
-#texture = sdl2.SDL_CreateTexture(renderer.renderer, sdl2.SDL_PIXELFORMAT_RGB332, sdl2.SDL_TEXTUREACCESS_STREAMING, *RESOLUTION)
-#texture = sdl2.SDL_CreateTextureFromSurface(renderer.renderer, surface)
 texture = sdl2.SDL_CreateTexture(renderer.renderer, sdl2.SDL_PIXELFORMAT_RGB332, sdl2.SDL_TEXTUREACCESS_STREAMING, *RESOLUTION)
 
-#print(dir(texture))
 window.show()
-#texture_array =
-#print(dir(surface.contents))
+
 
 class SetTrace(object):
     def __init__(self, func):
@@ -114,7 +100,7 @@ def wait_for_vsync():
         continue
     WAIT_FOR_VSYNC = False
 
-#KEY = 0
+
 KEYS = {
     sdl2.SDLK_UP: False,
     sdl2.SDLK_DOWN: False,
@@ -123,8 +109,7 @@ KEYS = {
     sdl2.SDLK_ESCAPE: False
 }
 
-#def get_keycode():
-#    return KEY
+
 
 def get_key_state(keycode):
     return KEYS[keycode]
@@ -156,6 +141,7 @@ def display_step():
             wrote_pixel = True
             break
 
+    # TODO: Fun feature, turn off background filling for painting program
     if not wrote_pixel:
         write_color_to_frame(BACKGROUND_COLOR)
 
@@ -167,32 +153,11 @@ def display_step():
         if Y == RESOLUTION[1]:
             Y = -VBLANK
 
-            # frame = np.array(FRAME, dtype=np.uint8).reshape(
-            #     (RESOLUTION[1], RESOLUTION[0], 1)
-            # )
-            # add alpha
-            #frame = np.insert(frame, 3, 255, axis=2)
-            #frame = np.transpose(frame, [1, 0, 2])
-            #cv2.imshow("window", frame)
-            #KEY = cv2.waitKeyEx(1)
-            #print(KEY)
-
-            #np.copyto(surface_array, frame)
-            #texture = sdl2.SDL_CreateTextureFromSurface(renderer.renderer, surface)
-            #np.copyto()
-            sdl2.SDL_UpdateTexture(
-                texture.contents, None,
-                #ctypes.cast(FRAME, ctypes.POINTER(ctypes.c_ubyte)),
-                #ctypes.pointer(FRAME),
-                #surface.contents.pixels,
-                #renderer.renderer._screenbuffer_ptr,
-                FRAME_PTR,
-                RESOLUTION[0]
-            )
+            sdl2.SDL_UpdateTexture(texture.contents, None,FRAME_PTR, RESOLUTION[0])
             renderer.copy(texture.contents)
             renderer.present()
             renderer.clear()
-            window.refresh()
+            #window.refresh()
 
             for event in sdl2.ext.get_events():
                 if event.type == sdl2.SDL_KEYDOWN:
@@ -248,6 +213,11 @@ def main():
             "USER_CODE": True, "pyvcs":  Namespace(**globals()),
             "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
         })
+
+    sdl2.SDL_DestroyTexture(texture)
+    sdl2.SDL_DestroyRenderer(renderer.renderer)
+    sdl2.SDL_DestroyWindow(window.window)
+    sdl2.ext.quit()
 
 if __name__ == '__main__':
     main()
