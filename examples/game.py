@@ -33,11 +33,20 @@ def foo():
 
 color = 128
 pyvcs.set_background(255)
-ball = pyvcs.Ball(4)
+#ball = pyvcs.Ball(4)
 #pyvcs.set_playfield(255)
+player_sprite = [
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 0, 1, 0, 1, 0, 0, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0],
+]
 
-pyvcs.playfield.bits = [255, 255] #[128, 0]
-pyvcs.playfield.mode = pyvcs.PlayfieldMode.REFLECT
+player = pyvcs.Player(player_sprite[0])
+
+pyvcs.playfield.sprite = [255, 255] #[128, 0]
+pyvcs.playfield.reflect = True
 pyvcs.playfield.enable()
 
 x = 12
@@ -69,35 +78,39 @@ while True:
         pyvcs.wait_for_hsync()
 
     # After doing the top of the playfield, switch to the sides
-    pyvcs.playfield.bits = wall
+    pyvcs.playfield.sprite = wall
 
-    # Vertical positioning of the ball
+    # Vertical positioning of the player
     for i in range(y - 4):
         pyvcs.wait_for_hsync()
 
     # Enable with x
-    ball.enable(x)
+    #ball.enable(x)
+    player.enable()
 
     # Vertical height
-    for i in range(4):
+    for i in range(5):
         #print("y,",i)
+        player.sprite = player_sprite[i]
         pyvcs.wait_for_hsync()
 
-    ball.disable()
+    player.disable()
 
     #  Position the bottom of the playfield
     for i in range(pyvcs.HEIGHT - y - 8):
         pyvcs.wait_for_hsync()
 
-    playfield.bits = top_bottom
+    playfield.sprite = top_bottom
 
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_LEFT):
-        x = max(x - 1, 4)
+        x = max(x - 1, 2)
         color = (color - 1) % 256
+        player.reflect = True
     #pyvcs.wait_for_hsync()
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_RIGHT):
-        x = min(x + 1, 120)
+        x = min(x + 1, 118)
         color = (color + 1) % 256
+        player.reflect = False
     #pyvcs.wait_for_hsync()
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_UP):
         color = (color - 16) % 256
@@ -110,7 +123,7 @@ while True:
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_ESCAPE):
         break
 
-
+    player.x = x
 
     pyvcs.wait_for_vsync()
 

@@ -17,13 +17,32 @@ from state import GLOBAL_STATE
 
 import inspect
 
+# Visible screen size
 WIDTH = 128
 HEIGHT = 72
+
+# Blank parts of the screen at the top and left
+HBLANK = 64
+VBLANK = 32
+VSYNC_LINE = -1 # 1 scanline before the visible part of the image starts
+
+# How many steps the display advances for each operation on the CPU
+DISPLAY_CLOCK_RATIO = 3
+
+# WIDTH + HBLANK % 3 == 0 because the display does 3 steps per user instruction
+assert (WIDTH + HBLANK) % DISPLAY_CLOCK_RATIO == 0
+
+PLAYFIELD_WIDTH = WIDTH // 2 # The playfield is half the width of the screen
+PLAYFIELD_RESOLUTION = 4 # Each bit of the playfield sprite is equal to 4 display clock counts
+PLAYFIELD_SPRITE_WIDTH_BYTES = PLAYFIELD_WIDTH // PLAYFIELD_RESOLUTION // 8
+
 RESOLUTION = (WIDTH, HEIGHT)
 FRAME = [0] * (RESOLUTION[0] * RESOLUTION[1] * 1)
 FRAME = array.array('B', FRAME)
-HBLANK = 64 # RESOLUTION[0] + HBLANK % 3 == 0 because the display does 3 steps per user instruction
-VBLANK = 32
+
+
+
+
 
 MV = memoryview(FRAME).cast("B")
 FRAME_PTR = ctypes.c_void_p(FRAME.buffer_info()[0])
@@ -62,60 +81,68 @@ class PlayfieldMode(IntEnum):
     DUPLICATE = 0
     REFLECT = 1
 
-class Playfield:
+class Object:
     def __init__(self):
-        ### Constants that shouldn't change. ###
-        # TODO: Should they be stored as globals?
-
-        # Each bit given by the user
-        self.bit_width = 4
-
-        # The width of the internal representation of the playfield
-        self._internal_width = RESOLUTION[0] // 2
-
-        # The width of the external representation of the playfield
-        self.width = self._internal_width / self.bit_width
-
-        ### User changable values ###
-
-        # The color of the playfield and the balls
-        self.color = 0
-
-        # The bits that represent which parts of the playfield are turned on
-        self.bits = bytes([0,0])
-
-        # Whether to draw the playfield at all
         self.enabled = False
 
-        # Whether to duplicate or reflect the playfield on the right side of the screen
-        self.mode = PlayfieldMode.DUPLICATE
+    def enable(self, enabled=True):
+        self.enabled = enabled
+
+    def disable(self):
+        self.enabled = False
+
+class Sprite(Object):
+    def __init__(self, num_bytes, width_multiplier, sprite=None, color=0, reflect=False):
+        super().__init__()
+
+        self.num_bytes = num_bytes
+        self.num_bits = num_bytes * 8
+        self._width_multiplier = width_multiplier
+        self._internal_width = self.num_bits * self.width_multiplier
+        self.color = color
+        self.reflect = reflect
+
+        if sprite is None:
+            self.sprite = bytes([0] * self.num_bytes)
+        else:
+            self.sprite = sprite
 
     @property
-    def bits(self):
+    def width_multiplier(self):
+        return self._width_multiplier
+
+    @width_multiplier.setter
+    def width_multiplier(self, value):
+        sprite = self.sprite
+        self._width_multiplier = value
+        self._internal_width = self.num_bits * self._width_multiplier
+        self.sprite = sprite
+
+    @property
+    def sprite(self):
         """
+        TODO: Update with actual width
         This defines which parts of the playfield are turned on.
         It's given by the user as 24 bits wide and then converted to 96 bits internally
         This represents half of the width of the resolution.
         The other half is either duplicated or mirrored from this.
         """
-        return [self._bits[i*self.bit_width] for i in range(self.width)]
+        return [self._bits[i*self.width_multiplier] for i in range(self.num_bits)]
 
-    @bits.setter
-    def bits(self, value):
+    @sprite.setter
+    def sprite(self, value):
         """
+        TODO: Update with actual width
         bits can either be given as 3 bytes, in which case the individual bits are used or
         it can be given as an iterable of length 24 in which each value is truthy
         (0/1 or True/False).
         """
-        full_len = self.width
-        short_len = int(self.width // 8)
-
-        assert len(value) == full_len or len(value) == short_len
+        assert len(value) == self.num_bits or len(value) == self.num_bytes
 
         # If given the compressed version, convert to the full one
-        if len(value) == short_len:
+        if len(value) == self.num_bytes:
             bits = []
-            for i in range(short_len):
+            for i in range(self.num_bytes):
                 bits += [(value[i] >> bit) & 1 for bit in range(7, -1, -1)]
         else:
             bits = value
@@ -123,16 +150,18 @@ class Playfield:
         # Store as a full representation where each bit is repeated bit_width times
         self._bits = []
         for bit in bits:
-            self._bits += [bit]*self.bit_width
+            self._bits += [bit]*self.width_multiplier
 
         # Also store a reverse representation to make it easier to display the mirrored mode
         self._reverse = self._bits[::-1]
 
-    def enable(self, enabled=True):
-        self.enabled = enabled
+class Playfield(Sprite):
+    def __init__(self):
+        super().__init__(PLAYFIELD_SPRITE_WIDTH_BYTES, PLAYFIELD_RESOLUTION)
 
-    def disable(self):
-        self.enabled = False
+        # Whether to duplicate or reflect the playfield on the right side of the screen
+        #self.mode = PlayfieldMode.DUPLICATE
+
 
 playfield = Playfield()
 #def __getattr__
@@ -141,6 +170,24 @@ playfield = Playfield()
 #PLAYFIELD_COLOR = playfield.color
 
 #PLAYFIELD_COLOR = 0
+
+class Moveable:
+    def __init__(self, x=0):
+        self.x = x
+
+PLAYERS = []
+
+class Player(Sprite, Moveable):
+    def __init__(self, sprite, color=0, width_multiplier=1, x=0):
+        #super(Sprite, self).__init__(1, width_multiplier, sprite=sprite, color=color)
+        Sprite.__init__(self, 1, width_multiplier, sprite=sprite, color=color)
+        #super(Moveable, self).__init__(x)
+        Moveable.__init__(self, x)
+
+        self.reflect = False
+
+        PLAYERS.append(self)
+
 BALLS = []
 X = -HBLANK
 Y = -VBLANK
@@ -187,7 +234,7 @@ def wait_for_vsync():
     global VSYNC, WAIT_FOR_VSYNC
     WAIT_FOR_VSYNC = True
     VSYNC = False
-    while Y != -1:
+    while Y != VSYNC_LINE:
         continue
     WAIT_FOR_VSYNC = False
 
@@ -227,11 +274,21 @@ def display_step():
             Y += 1
         return
 
-    wrote_pixel = False
     for ball in BALLS:
         if ball.enabled and (X >= ball.x) and (X < (ball.x + ball.width)):
             pixel = playfield.color
             break
+
+    for player in PLAYERS:
+        if player.enabled and (X >= player.x) and (X < (player.x + player._internal_width)):
+            if player.reflect:
+                if player._reverse[X - player.x]:
+                    pixel = player.color
+                    break
+            else:
+                if player._bits[X - player.x]:
+                    pixel = player.color
+                    break
 
     if playfield.enabled:
         # Left half
@@ -239,11 +296,11 @@ def display_step():
             if playfield._bits[X]:
                 pixel = playfield.color
         else:
-            if playfield.mode == PlayfieldMode.DUPLICATE:
-                if playfield._bits[X - playfield._internal_width]:
-                    pixel = playfield.color
-            elif playfield.mode == PlayfieldMode.REFLECT:
+            if playfield.reflect:
                 if playfield._reverse[X - playfield._internal_width]:
+                    pixel = playfield.color
+            else:
+                if playfield._bits[X - playfield._internal_width]:
                     pixel = playfield.color
 
 
@@ -315,6 +372,9 @@ def monitor(frame, event, arg):
     # print(f" {id(frame)} | {event:10} | {str(arg):>4} |", end=' ')
     # print(f"{frame.f_lineno:>4} | {frame.f_lasti:>6} |", end=' ')
     # print(f"{opcode.opname[code.co_code[offset]]:<18} | {code.co_code[offset+1]} |", end=' ')
+    # #print(code.co_code[offset:offset+2])
+    # #print(eval(code.co_code[offset:offset+2]))
+    # print(inspect.getframeinfo(frame))
     # print(dis.disassemble(code, lasti=offset))
     #print(code.co_stacksize)
     #print(dis.stack_effect(code.co_code[offset]))
@@ -457,6 +517,7 @@ def main():
     sdl2.ext.quit()
     print(X,Y)
     #print(PLAYFIELD_COLOR, playfield.color)
+    print(playfield.color)
 
 if __name__ == '__main__':
     main()
