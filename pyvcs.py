@@ -4,6 +4,7 @@ from collections.abc import Iterable
 import ctypes
 import dis
 from enum import IntEnum
+from functools import partial
 import opcode
 from pathlib import Path
 import sys
@@ -22,7 +23,7 @@ WIDTH = 128
 HEIGHT = 72
 
 # Blank parts of the screen at the top and left
-HBLANK = 64
+HBLANK = 97
 VBLANK = 32
 VSYNC_LINE = -1 # 1 scanline before the visible part of the image starts
 
@@ -82,14 +83,16 @@ class PlayfieldMode(IntEnum):
     REFLECT = 1
 
 class Object:
-    def __init__(self):
-        self.enabled = False
+    def __init__(self, enabled=0):
+        self._enabled = 0
+        self._next_enabled = enabled
+        self._drawing = False
 
-    def enable(self, enabled=True):
-        self.enabled = enabled
+    def enable(self, delay=0):
+        self._next_enabled = 1 + delay
 
-    def disable(self):
-        self.enabled = False
+    def disable(self, delay=0):
+        self._next_enabled = 0 - delay
 
 class Sprite(Object):
     def __init__(self, num_bytes, width_multiplier, sprite=None, color=0, reflect=False):
@@ -155,12 +158,17 @@ class Sprite(Object):
         # Also store a reverse representation to make it easier to display the mirrored mode
         self._reverse = self._bits[::-1]
 
+    def spawn_moveable(self, width=1):
+        return Missile(self, width)
+
 class Playfield(Sprite):
     def __init__(self):
         super().__init__(PLAYFIELD_SPRITE_WIDTH_BYTES, PLAYFIELD_RESOLUTION)
 
         # Whether to duplicate or reflect the playfield on the right side of the screen
         #self.mode = PlayfieldMode.DUPLICATE
+
+        self.spawn_ball = self.spawn_moveable
 
 
 playfield = Playfield()
@@ -186,9 +194,44 @@ class Player(Sprite, Moveable):
 
         self.reflect = False
 
+        self.spawn_missile = self.spawn_moveable
+
         PLAYERS.append(self)
 
-BALLS = []
+    def display(self, x=None, sprite=None):
+        """
+        Convience function for enabling, setting the x location and changing the sprite in one
+        command.
+        """
+        self.enable()
+        if x is not None:
+            self.x = x
+        if sprite is not None:
+            self.sprite = sprite
+
+
+MISSILES = []
+
+class Missile(Object, Moveable):
+    def __init__(self, player, width, x=0):
+        Object.__init__(self)
+        Moveable.__init__(self, x)
+
+        self.player = player
+        self.width = width
+
+        MISSILES.append(self)
+
+    #def __del__(self):
+    #    print(MISSILES)
+    #    MISSILES.remove(self)
+    #    print(MISSILES)
+    def delete(self):
+        MISSILES.remove(self)
+
+Ball = partial(Missile, playfield)
+
+#BALLS = []
 X = -HBLANK
 Y = -VBLANK
 
@@ -197,22 +240,22 @@ def write_color_to_frame(color):
     i = Y*RESOLUTION[0] + X
     FRAME[i] = color
 
-class Ball:
-    def __init__(self, width):
-        self.width = width
-        self.enabled = False
-        self.x = 0
-        BALLS.append(self)
-
-    def enable(self, x=None):
-        if x is None:
-            self.x = max(X, 0)
-        else:
-            self.x = x
-        self.enabled = True
-
-    def disable(self):
-        self.enabled = False
+# class Ball:
+#     def __init__(self, width):
+#         self.width = width
+#         self.enabled = False
+#         self.x = 0
+#         BALLS.append(self)
+#
+#     def enable(self, x=None):
+#         if x is None:
+#             self.x = max(X, 0)
+#         else:
+#             self.x = x
+#         self.enabled = True
+#
+#     def disable(self):
+#         self.enabled = False
 
 HSYNC = False
 WAIT_FOR_HSYNC = False
@@ -245,7 +288,8 @@ KEYS = {
     sdl2.SDLK_LEFT: False,
     sdl2.SDLK_RIGHT: False,
     sdl2.SDLK_ESCAPE: False,
-    sdl2.SDLK_q: False
+    sdl2.SDLK_q: False,
+    sdl2.SDLK_SPACE: False
 }
 
 
@@ -274,13 +318,49 @@ def display_step():
             Y += 1
         return
 
-    for ball in BALLS:
-        if ball.enabled and (X >= ball.x) and (X < (ball.x + ball.width)):
-            pixel = playfield.color
+    # for ball in BALLS:
+    #     if ball.enabled and (X >= ball.x) and (X < (ball.x + ball.width)):
+    #         pixel = playfield.color
+    #         break
+
+    for missile in MISSILES:
+        #print(missile.enabled, X, missile.x)
+        if ((missile._enabled == 1) or (missile._enabled < 0)) and (X >= missile.x) and (X < (missile.x + missile.width)):
+            pixel = missile.player.color
             break
 
+    # for missile in MISSILES:
+    #     if missile.enabled != 0:
+    #         print(missile.enabled, X, missile.x, missile.width, missile._drawing)
+    #         # left edge
+    #         if X == missile.x:
+    #             # Delay to start drawing
+    #             if missile.enabled > 1:
+    #                 missile.enabled -= 1
+    #             # Draw this frame
+    #             elif missile.enabled == 1:
+    #                 missile._drawing = True
+    #             # Delay to stop drawing
+    #             else:
+    #                 missile._drawing = True
+    #                 missile.enabled += 1
+    #         elif X >= (missile.x + missile.width):
+    #             missile._drawing = False
+    #
+    #         if missile._drawing and pixel is None:
+    #             pixel = missile.player.color
+        # if missile.enabled and (X >= missile.x) and (X < (missile.x + missile.width)):
+        #     #print(missile.enabled, missile.x, X, missile.width)
+        #     print(missile.enabled, missile.x, X, (missile.x + missile.width - 1), (X))
+        #     if missile.enabled > 1:
+        #         if (missile.x + missile.width - 1) == (X):
+        #             missile.enabled -= 1
+        #     else:
+        #         pixel = missile.player.color
+        #         break
+
     for player in PLAYERS:
-        if player.enabled and (X >= player.x) and (X < (player.x + player._internal_width)):
+        if player._enabled and (X >= player.x) and (X < (player.x + player._internal_width)):
             if player.reflect:
                 if player._reverse[X - player.x]:
                     pixel = player.color
@@ -290,7 +370,7 @@ def display_step():
                     pixel = player.color
                     break
 
-    if playfield.enabled:
+    if playfield._enabled:
         # Left half
         if X < playfield._internal_width:
             if playfield._bits[X]:
@@ -315,6 +395,23 @@ def display_step():
         HSYNC = True
         X = -HBLANK
         Y += 1
+
+        for object in MISSILES + PLAYERS + [playfield]:
+            object._enabled = object._next_enabled
+
+            if object._next_enabled > 1:
+                object._next_enabled -= 1
+            if object._next_enabled < 0:
+                object._next_enabled += 1
+
+        # for missile in MISSILES:
+        #     missile._enabled = missile._next_enabled
+        #
+        #     if missile._next_enabled > 1:
+        #         missile._next_enabled -= 1
+        #     if missile._next_enabled < 0:
+        #         missile._next_enabled += 1
+
         if Y == RESOLUTION[1]:
             Y = -VBLANK
 
@@ -334,9 +431,11 @@ def display_step():
                     #break
                 #print(event)
 
-            sys.stdout.write('\r')
-            sys.stdout.write("%.2f" % (1 / (time.time() - START)))#, str(KEY).zfill(8)))
-            sys.stdout.flush()
+
+
+            #sys.stdout.write('\r')
+            #sys.stdout.write("%.2f" % (1 / (time.time() - START)))#, str(KEY).zfill(8)))
+            #sys.stdout.flush()
             START = time.time()
             #VSYNC = True
             #HSYNC = True
