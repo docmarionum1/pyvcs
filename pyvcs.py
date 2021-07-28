@@ -236,23 +236,27 @@ class Player(Sprite, Moveable):
         self.spawn_missile = self.spawn_moveable
 
 class Text(Player):
-    def __init__(self, letter, upper=None, *args, **kwargs):
-        #self.letter = letter
-        if upper is None and letter.isupper():
-            upper = True
-        if upper:
-            self._sprite_map = uppercase[letter.lower()]
-        else:
-            self._sprite_map = lowercase[letter.lower()]
-
+    def __init__(self, character, upper=None, *args, **kwargs):
+        self.set_character(character, upper)
         super().__init__(self._sprite_map[0], collidable=False, *args, **kwargs)
 
     def display(self, *args, i=None, **kwargs):
         """
         Convience function that displays the ith line of the letter.
         """
-        super().display(*args, sprite=self._sprite_map[i], **kwargs)
+        if i < len(self._sprite_map):
+            super().display(*args, sprite=self._sprite_map[i], **kwargs)
+        else:
+            super().display(*args, sprite=[0], **kwargs)
 
+    def set_character(self, character, upper=None):
+        character = str(character)
+        if upper is None and character.isupper():
+            upper = True
+        if upper:
+            self._sprite_map = uppercase[character.lower()]
+        else:
+            self._sprite_map = lowercase[character.lower()]
 
 MISSILES = []
 

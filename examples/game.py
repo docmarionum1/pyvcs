@@ -68,7 +68,7 @@ pyvcs.playfield.enable()
 
 
 
-quit = 0
+quit = False
 
 #ball.enable()
 #while True:
@@ -85,19 +85,24 @@ missiles = {}
 
 # Size within the playfield walls
 WALL_WIDTH = 4
+TOP_HEIGHT = 6
 WIDTH = pyvcs.WIDTH - WALL_WIDTH * 2
-HEIGHT = pyvcs.HEIGHT - WALL_WIDTH * 2
+HEIGHT = pyvcs.HEIGHT - WALL_WIDTH - TOP_HEIGHT
 
 colliding = False
 hp = HEIGHT
 score = 0
+score_text = [pyvcs.Text(0, x=WIDTH//2-5), pyvcs.Text(0, x=WIDTH//2), pyvcs.Text(0, x=WIDTH//2+5)]
 
 missle_spawn_counter = 0
 num_missiles = 0
-
-pyvcs.wait_for_vsync()
+hurt_animation = 0
 
 alive = True
+
+press_space_lines = []
+
+pyvcs.wait_for_vsync()
 
 def start_screen():
     color = 128
@@ -124,41 +129,29 @@ def start_screen():
 
     empty_sprite = [0]
 
-    # P_sprite = pyvcs.font["P"]
-    # r_sprite = pyvcs.font["r"]
-    # e_sprite = pyvcs.font["e"]
-    # s_sprite = pyvcs.font["s"]
-    # p_sprite = pyvcs.font["p"]
-    # a_sprite = pyvcs.font["a"]
-    # c_sprite = pyvcs.font["c"]
-
-    #s_sprite_tmp = [0]
-
     x = 27
-    P = pyvcs.Font("P", color=color, x=x)
+    P = pyvcs.Text("P", color=color, x=x)
     x += 10
-    r = pyvcs.Font("r", color=color, x=x)
+    r = pyvcs.Text("r", color=color, x=x)
     x += 6
-    e1 = pyvcs.Font("e", color=color, x=x)
+    e1 = pyvcs.Text("e", color=color, x=x)
     x += 6
-    s1 = pyvcs.Font("s", color=color, x=x)
+    s1 = pyvcs.Text("s", color=color, x=x)
     x += 6
-    s2 = pyvcs.Font("s", color=color, x=x)
+    s2 = pyvcs.Text("s", color=color, x=x)
 
     x += 16
-    s3 = pyvcs.Font("s", color=color, x=x)
+    s3 = pyvcs.Text("s", color=color, x=x)
     x += 6
-    p = pyvcs.Font("p", color=color, x=x)
+    p = pyvcs.Text("p", color=color, x=x)
     x += 6
-    a = pyvcs.Font("a", color=color, x=x)
+    a = pyvcs.Text("a", color=color, x=x)
     x +=6
-    c = pyvcs.Font("c", color=color, x=x)
+    c = pyvcs.Text("c", color=color, x=x)
     x += 6
-    e2 = pyvcs.Font("e", color=color, x=x)
+    e2 = pyvcs.Text("e", color=color, x=x)
 
     while True:
-        #i = 0
-        #while i < HEIGHT:
         for i in range(len(left_start_screen)*4):
             j = i // 4
             if j < len(left_start_screen):
@@ -215,43 +208,17 @@ def start_screen():
         c.display_and_disable(i=7)
         e2.display_and_disable(i=7)
 
-        #i += 1
-        #P.display(i=7, disable=0)
-
-        # r.display(i=7, disable=0)
-        # e1.display(i=7, disable=0)
-        # s1.display(i=7, disable=0)
-        # s2.display(i=7, disable=0)
-        #
-        # s3.display(i=7, disable=0)
-        # p.display(i=7, disable=0)
-        # a.display(i=7, disable=0)
-        # c.display(i=7, disable=0)
-        # e2.display(i=7, disable=0)
-
-        #pyvcs.wait_for_hsync()
-
-
-        #for f in [P, r, e1, s1, s2, s3, p, a, c, e2]:
-        #    f.display_and_disable(i=7)
-        #    f.sprite = empty_sprite
-
-
-
-
-
-
         if pyvcs.get_key_state(pyvcs.sdl2.SDLK_ESCAPE):
             for f in [P, r, e1, s1, s2, s3, p, a, c, e2]:
                 f.delete()
 
-            return False
+            return True
 
         if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE):
             for f in [P, r, e1, s1, s2, s3, p, a, c, e2]:
                 f.delete()
 
-            return True
+            return False
 
         pyvcs.playfield.color = color
         #P.color = color
@@ -261,23 +228,26 @@ def start_screen():
 
         pyvcs.wait_for_vsync()
 
-alive = start_screen()
+quit = start_screen()
 
 pyvcs.playfield.reflect = True
 
-while alive:
+while not quit:
     # Set the color before starting the frame
     pyvcs.playfield.color = color
-
-    # Count visible scanlines
-    i = -1
 
     # Vsync leaves us with one scanline before the visible
     # section begins; so wait till the next scanline
     pyvcs.wait_for_hsync()
 
+    for character in score_text:
+        character.enable(1)
+
     # height the top of the playfield
-    for j in range(3):
+    for j in range(TOP_HEIGHT - 2):
+        if j < 4:
+            for character in score_text:
+                character.display(i=4+j, disable=3-j)
         pyvcs.wait_for_hsync()
 
     # The following lines kill just under one scanline of waiting. We need to do this
@@ -285,11 +255,15 @@ while alive:
     #for j in range(19):
     #    pass
 
-    sprite = player_dict.get(i, None)
-    if sprite:
-        player.display(sprite=sprite)
-    else:
-        player.disable()
+    # Count visible scanlines
+    i = -1
+
+    if alive:
+        sprite = player_dict.get(i, None)
+        if sprite:
+            player.display(sprite=sprite)
+        else:
+            player.disable()
 
     if i == ball_y:
         ball.disable(4)
@@ -302,48 +276,43 @@ while alive:
     pyvcs.playfield.sprite = wall
 
     while i < HEIGHT:
-        sprite = player_dict.get(i, None)
-        if sprite:
-            player.display(sprite=sprite)
-        elif sprite == 0:
-            player.disable(hp)
+        if alive:
+            sprite = player_dict.get(i, None)
+            if sprite:
+                player.display(sprite=sprite)
+            elif sprite == 0:
+                player.disable(hp)
 
-        if i in missiles:
-            for missile in missiles[i]:
-                missile.disable(1)
+            if i in missiles:
+                for missile in missiles[i]:
+                    missile.disable(1)
+        else:
+            # if i >= 8 and i < 16:
+            #     line = press_space_lines[0]
+            #     j = i - 8
+            #     for character in line:
+            #         character.display(i=j)
+            # elif i == 16:
+            #     for character in line:
+            #         character.disable()
+            if i in press_space_map:
+                j, [a, b, c, d, e] = press_space_map[i]
+                a.display(i=j)
+                b.display(i=j)
+                c.display(i=j)
+                d.display(i=j)
+                e.display(i=j)
 
-        #if (i >= ball_y) and (i < ball_y_end):
-        #    ball.enable()
-        #else:
-        #3    ball.disable()
+
+
 
         if i == ball_y:
             ball.disable(4)
-        #elif i == ball_y_end:
-        #    ball.disable()
-
-
-        #pyvcs.wait_for_hsync()
-
-        #if (i - 1) in missiles:
-        #    for missile in missiles[i - 1]:
-        #        missile.disable(0)
-
-        #if i >= ball.y and
-
 
         pyvcs.wait_for_hsync()
 
-        # j = (i - player.y)
-        # if j >= 0 and j < len(player_sprite):
-        #     player.enable()
-        #     player.sprite = player_sprite[j]
-        # else:
-        #     player.disable()
-
         i += 1
 
-    #player.disable()
     player.sprite = [0]
     # height the bottom of the playfield
     playfield.sprite = top_bottom
@@ -354,61 +323,81 @@ while alive:
         player.reset_collisions()
         if not colliding:
             colliding = True
-            hp -= 10
-            print("Ouch", hp)
+            hp -= HEIGHT // 10
+            hurt_animation = 20
             if hp < 1:
                 alive = False
+
+                spacing = 8
+                press_space_lines = []
+                for word, left_margin in [("press", WIDTH//2 - 16), ("space", WIDTH//2 - 16)]:
+                    press_space_lines.append([
+                        pyvcs.Text(character, x=left_margin + idx*spacing) for idx, character in enumerate(word)
+                    ])
+
+                press_space_map = {16 + j: (j, press_space_lines[0]) for j in range(9)}
+                press_space_map.update({32 + j: (j, press_space_lines[1]) for j in range(9)})
     elif ball not in player.collisions and colliding:
         colliding = False
 
-    #for obj in ball.collisions:
-    #    if isinstance(obj, pyvcs.Missile) and obj != ball:
-    #        print("boom")
-    #        ball.reset_collisions()
-    #if ball.collisions.intersection(missiles):
-    #    print("Boom")
-    #    ball.reset_collisions()
+    if hurt_animation > 0:
+        hurt_animation -= 1
+        if player.color == 0:
+            player.color = 128
+        else:
+            player.color = 0
 
-
-    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_LEFT):
-        x = max(x - 1, 0)
-        color = (color - 1) % 256
-        player.reflect = True
-    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_RIGHT):
-        x = min(x + 1, WIDTH - 8)
-        color = (color + 1) % 256
-        player.reflect = False
-    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_UP):
-        y = max(y - 1, 0)
-        color = (color - 16) % 256
-    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_DOWN):
-        y = min(y + 1, HEIGHT - player_height)
-        color = (color + 16) % 256
-    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE) and (num_missiles < 3) and (missle_spawn_counter <= 0):
-        missle_spawn_counter = 6
-        num_missiles += 1
-        missile = player.spawn_missile(4)
-        missile.y = y + 2
-        # Player is facing left
-        if player.reflect:
-            missile.x = x + 8
-            missile.dx = -2
-        else: # Player is facing right
-            missile.x = x + 4
-            missile.dx = 2
-        #missiles.append(missile)
-        if missile.y not in missiles:
-            missiles[missile.y] = []
-        missiles[missile.y].append(missile)
-    missle_spawn_counter -= 1
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_ESCAPE):
+        quit = True
         break
+    if alive:
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_LEFT):
+            x = max(x - 1, 0)
+            color = (color - 1) % 256
+            player.reflect = True
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_RIGHT):
+            x = min(x + 1, WIDTH - 8)
+            color = (color + 1) % 256
+            player.reflect = False
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_UP):
+            y = max(y - 1, 0)
+            color = (color - 16) % 256
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_DOWN):
+            y = min(y + 1, HEIGHT - player_height)
+            color = (color + 16) % 256
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE) and (num_missiles < 3) and (missle_spawn_counter <= 0):
+            missle_spawn_counter = 6
+            num_missiles += 1
+            missile = player.spawn_missile(4)
+            missile.y = y + 2
+            # Player is facing left
+            if player.reflect:
+                missile.x = x + 8
+                missile.dx = -2
+            else: # Player is facing right
+                missile.x = x + 4
+                missile.dx = 2
+            #missiles.append(missile)
+            if missile.y not in missiles:
+                missiles[missile.y] = []
+            missiles[missile.y].append(missile)
+    else:
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE):
+            for line in press_space_lines:
+                for character in line:
+                    character.delete()
+            alive = True
+            hp = HEIGHT
+            missle_spawn_counter = 6
+            score = 0
 
+    missle_spawn_counter -= 1
     player.x = x + WALL_WIDTH
     player.y = y
 
+
+
     # Update the missiles
-    #for y, missile in list(missiles.items())[:]:
     to_delete = []
     for missile_list in missiles.values():
         for missile in missile_list:
@@ -417,6 +406,9 @@ while alive:
                 ball.dx += missile.dx
                 #ball.dy += 1
                 score += 1
+
+
+
             else:
                 #if isinstance(missile, pyvcs.Missile):
                 missile.x += missile.dx
@@ -429,12 +421,11 @@ while alive:
         missiles[missile.y].remove(missile)
         if len(missiles[missile.y]) == 0:
             del missiles[missile.y]
-        #del missile
         missile.delete()
 
     ball.x += ball.dx
-    if ball.x < 4:
-        ball.x = 4
+    if ball.x < WALL_WIDTH:
+        ball.x = WALL_WIDTH
         ball.dx = -ball.dx
     if ball.x > WIDTH:
         ball.x = WIDTH
@@ -448,6 +439,10 @@ while alive:
         ball_y = HEIGHT - 4
         ball.dy = -ball.dy
     ball_y_end = ball_y + 4
+
+
+    for score_index, character in enumerate(str(score).zfill(3)):
+        score_text[score_index].set_character(character)
 
 
     # Sort the list of objects by their y position
