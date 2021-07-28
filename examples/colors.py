@@ -19,7 +19,7 @@ while True:
         y += 8
 
         pyvcs.wait_for_hsync()
-        for j in range(3):
+        for j in range(6):
             pyvcs.set_background(y)
         pyvcs.set_background(y + 1)
         pyvcs.set_background(y + 2)
@@ -30,7 +30,7 @@ while True:
         pyvcs.set_background(y + 7)
 
         pyvcs.wait_for_hsync()
-        for j in range(3):
+        for j in range(6):
             pyvcs.set_background(y)
         pyvcs.set_background(y + 1)
         pyvcs.set_background(y + 2)
