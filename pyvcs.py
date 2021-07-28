@@ -14,7 +14,7 @@ import numpy as np
 import sdl2
 import sdl2.ext
 
-from font import font
+from font import uppercase, lowercase
 from state import GLOBAL_STATE
 
 import inspect
@@ -84,17 +84,20 @@ set_background = background
 #    REFLECT = 1
 
 class Object:
-    def __init__(self, collection, enabled=0):
+    def __init__(self, collection=None, enabled=0, collidable=True):
         self._enabled = 0
         self._next_enabled = enabled
         self._drawing = False
+
         if collection is None:
             self.collection = []
         else:
             self.collection = collection
-        self.collisions = set()
-
         self.collection.append(self)
+
+        self.collidable = collidable
+        if self.collidable:
+            self.collisions = set()
 
     def enable(self, delay=0):
         self._next_enabled = 1 + delay
@@ -128,8 +131,8 @@ class Object:
         self.collection.remove(self)
 
 class Sprite(Object):
-    def __init__(self, collection, num_bytes, width_multiplier, sprite=None, color=0, reflect=False):
-        super().__init__(collection)
+    def __init__(self, num_bytes, width_multiplier, *args, sprite=None, color=0, reflect=False, **kwargs):
+        super().__init__(*args)
 
         self.num_bytes = num_bytes
         self.num_bits = num_bytes * 8
@@ -205,7 +208,7 @@ class Sprite(Object):
 
 class Playfield(Sprite):
     def __init__(self):
-        super().__init__(None, PLAYFIELD_SPRITE_WIDTH_BYTES, PLAYFIELD_RESOLUTION)
+        super().__init__(PLAYFIELD_SPRITE_WIDTH_BYTES, PLAYFIELD_RESOLUTION)
 
         # Whether to duplicate or reflect the playfield on the right side of the screen
         #self.mode = PlayfieldMode.DUPLICATE
@@ -214,12 +217,6 @@ class Playfield(Sprite):
 
 
 playfield = Playfield()
-#def __getattr__
-#GLOBAL_STATE["playfield"] = playfield
-
-#PLAYFIELD_COLOR = playfield.color
-
-#PLAYFIELD_COLOR = 0
 
 class Moveable:
     def __init__(self, x=0):
@@ -227,13 +224,10 @@ class Moveable:
 
 PLAYERS = []
 
-#class Font(Sprite, Moveable):
-
-
 class Player(Sprite, Moveable):
-    def __init__(self, sprite, color=0, width_multiplier=1, x=0):
+    def __init__(self, sprite, *args, color=0, width_multiplier=1, x=0, **kwargs):
         #super(Sprite, self).__init__(1, width_multiplier, sprite=sprite, color=color)
-        Sprite.__init__(self, PLAYERS, 1, width_multiplier, sprite=sprite, color=color)
+        Sprite.__init__(self, 1, width_multiplier, PLAYERS, *args, sprite=sprite, color=color, **kwargs)
         #super(Moveable, self).__init__(x)
         Moveable.__init__(self, x)
 
@@ -241,14 +235,17 @@ class Player(Sprite, Moveable):
 
         self.spawn_missile = self.spawn_moveable
 
-        #PLAYERS.append(self)
-
-class Font(Player):
-    def __init__(self, letter, *args, **kwargs):
+class Text(Player):
+    def __init__(self, letter, upper=None, *args, **kwargs):
         #self.letter = letter
-        self._sprite_map = font[letter]
+        if upper is None and letter.isupper():
+            upper = True
+        if upper:
+            self._sprite_map = uppercase[letter.lower()]
+        else:
+            self._sprite_map = lowercase[letter.lower()]
 
-        super().__init__(self._sprite_map[0], *args, **kwargs)
+        super().__init__(self._sprite_map[0], collidable=False, *args, **kwargs)
 
     def display(self, *args, i=None, **kwargs):
         """
@@ -372,7 +369,8 @@ def display_step():
             if pixel is None:
                 pixel = missile.player.color
 
-            collisions.add(missile)
+            if missile.collidable:
+                collisions.add(missile)
 
     for player in PLAYERS:
         if player._enabled and (X >= player.x) and (X < (player.x + player._internal_width)):
@@ -380,12 +378,14 @@ def display_step():
                 if player._reverse[X - player.x]:
                     if pixel is None:
                         pixel = player.color
-                    collisions.add(player)
+                    if player.collidable:
+                        collisions.add(player)
             else:
                 if player._bits[X - player.x]:
                     if pixel is None:
                         pixel = player.color
-                    collisions.add(player)
+                    if player.collidable:
+                        collisions.add(player)
 
     if playfield._enabled:
         # Left half
