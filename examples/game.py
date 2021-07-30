@@ -382,7 +382,7 @@ while not quit:
                 missiles[missile.y] = []
             missiles[missile.y].append(missile)
     else:
-        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE):
+        if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE) and (missle_spawn_counter <= -60):
             for line in press_space_lines:
                 for character in line:
                     character.delete()
