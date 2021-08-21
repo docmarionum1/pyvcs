@@ -31,13 +31,19 @@ def foo():
 #
 # game()
 
+# Size within the playfield walls
+WALL_WIDTH = 4
+TOP_HEIGHT = 6
+WIDTH = pyvcs.WIDTH - WALL_WIDTH * 2
+HEIGHT = pyvcs.HEIGHT - WALL_WIDTH - TOP_HEIGHT
+
 color = 128
 pyvcs.set_background(255)
 ball = pyvcs.Ball(4)
-ball.x = 50
-ball_y = 50
-ball.dx = 1
-ball.dy = 1
+ball.x = WIDTH - 12
+ball_y = 12
+ball.dx = -1
+ball.dy = -1
 ball_y_end = 54
 #pyvcs.set_playfield(255)
 player_sprite = [
@@ -55,9 +61,11 @@ x = 12
 y = 12
 
 player = pyvcs.Player(player_sprite[0])
+player.x = x + WALL_WIDTH
 player.y = y
 
-player_dict = {(player.y + i): player_sprite[i] for i in range(player_height)}
+player_dict = {(player.y + i - 1): player_sprite[i] for i in range(player_height)}
+player_dict[player.y + player_height] = 0
 
 
 
@@ -83,24 +91,32 @@ missiles = {}
 
 #objects = [player]
 
-# Size within the playfield walls
-WALL_WIDTH = 4
-TOP_HEIGHT = 6
-WIDTH = pyvcs.WIDTH - WALL_WIDTH * 2
-HEIGHT = pyvcs.HEIGHT - WALL_WIDTH - TOP_HEIGHT
+
 
 colliding = False
 hp = HEIGHT
 score = 0
 score_text = [pyvcs.Text(0, x=WIDTH//2-5), pyvcs.Text(0, x=WIDTH//2), pyvcs.Text(0, x=WIDTH//2+5)]
 
-missle_spawn_counter = 0
+missle_spawn_counter = 6
 num_missiles = 0
 hurt_animation = 0
+score_sound = 0
+jingle = 60
 
 alive = True
 
 press_space_lines = []
+
+pyvcs.audio.volume = 1
+
+# Missle sound
+pyvcs.audio.channel_1.waveform = 4
+pyvcs.audio.channel_1.frequency = 32
+
+# collision sound
+pyvcs.audio.channel_2.waveform = 7
+pyvcs.audio.channel_2.frequency = 10
 
 pyvcs.wait_for_vsync()
 
@@ -287,14 +303,6 @@ while not quit:
                 for missile in missiles[i]:
                     missile.disable(1)
         else:
-            # if i >= 8 and i < 16:
-            #     line = press_space_lines[0]
-            #     j = i - 8
-            #     for character in line:
-            #         character.display(i=j)
-            # elif i == 16:
-            #     for character in line:
-            #         character.disable()
             if i in press_space_map:
                 j, [a, b, c, d, e] = press_space_map[i]
                 a.display(i=j)
@@ -302,9 +310,6 @@ while not quit:
                 c.display(i=j)
                 d.display(i=j)
                 e.display(i=j)
-
-
-
 
         if i == ball_y:
             ball.disable(4)
@@ -319,12 +324,38 @@ while not quit:
     for i in range(WALL_WIDTH):
         pyvcs.wait_for_hsync()
 
+    # VBLANK Operations:
+    # Check collisions
+    # Update locations
+    # Play sounds
+
+    if jingle >= 0:
+        if jingle == 60:
+            pyvcs.audio.channel_1.volume = 2
+            pyvcs.audio.channel_1.frequency = 8
+        elif jingle == 50:
+            pyvcs.audio.channel_1.frequency -= 1
+        elif jingle == 40:
+            pyvcs.audio.channel_1.frequency -= 1
+        elif jingle == 30:
+            pyvcs.audio.channel_1.frequency -= 1
+        elif jingle == 0:
+            pyvcs.audio.channel_1.frequency = 32
+            pyvcs.audio.channel_1.volume = 0
+
+        jingle -= 1
+        pyvcs.wait_for_vsync()
+        continue
+
     if ball in player.collisions:
         player.reset_collisions()
         if not colliding:
             colliding = True
-            hp -= HEIGHT // 10
+            hp -= HEIGHT // 4
             hurt_animation = 20
+            pyvcs.audio.channel_2.volume = 2
+            pyvcs.audio.channel_2.frequency = 31
+            player.color = 0
             if hp < 1:
                 alive = False
 
@@ -346,6 +377,21 @@ while not quit:
             player.color = 128
         else:
             player.color = 0
+    if hurt_animation > 10 or (not alive and pyvcs.audio.channel_2.volume > 0):
+        pyvcs.audio.channel_2.volume -= .2
+        pyvcs.audio.channel_2.frequency += 1
+    elif (hurt_animation == 10) or not alive:
+        pyvcs.audio.channel_2.volume = 0
+    # if hurt_animation == 18:
+    #     pyvcs.audio.channel_2.frequency = 10
+    #     pyvcs.audio.channel_2.volume -= .2
+    # elif hurt_animation == 16:
+    #     pyvcs.audio.channel_2.frequency = 9
+    #     pyvcs.audio.channel_2.volume -= .2
+    # elif hurt_animation == 14:
+    #     pyvcs.audio.channel_2.volume = 0
+        #hurt_animation -= 1
+
 
     if pyvcs.get_key_state(pyvcs.sdl2.SDLK_ESCAPE):
         quit = True
@@ -381,6 +427,8 @@ while not quit:
             if missile.y not in missiles:
                 missiles[missile.y] = []
             missiles[missile.y].append(missile)
+
+            pyvcs.audio.channel_1.volume = 1
     else:
         if pyvcs.get_key_state(pyvcs.sdl2.SDLK_SPACE) and (missle_spawn_counter <= -60):
             for line in press_space_lines:
@@ -388,14 +436,26 @@ while not quit:
                     character.delete()
             alive = True
             hp = HEIGHT
+            x = 12
+            y = 12
+            player.x = x + WALL_WIDTH
+            player.y = y
+            player.reflect = False
             missle_spawn_counter = 6
             score = 0
+            ball.dx = 1
+            ball.dy = 1
+            ball.x = WIDTH - 12
+            ball_y = 12
+            jingle = 60
 
     missle_spawn_counter -= 1
+
+    if missle_spawn_counter == 0:
+        pyvcs.audio.channel_1.volume = 0
+
     player.x = x + WALL_WIDTH
     player.y = y
-
-
 
     # Update the missiles
     to_delete = []
@@ -406,6 +466,9 @@ while not quit:
                 ball.dx += missile.dx
                 #ball.dy += 1
                 score += 1
+                score_sound = 6
+                pyvcs.audio.channel_2.frequency = 8
+                pyvcs.audio.channel_2.volume = 1
 
 
 
@@ -439,6 +502,17 @@ while not quit:
         ball_y = HEIGHT - 4
         ball.dy = -ball.dy
     ball_y_end = ball_y + 4
+
+    if score_sound == 4:
+        pyvcs.audio.channel_2.frequency = 10
+        pyvcs.audio.channel_2.volume -= .2
+    elif score_sound == 2:
+        pyvcs.audio.channel_2.frequency = 9
+        pyvcs.audio.channel_2.volume -= .2
+    elif score_sound == 0:
+        pyvcs.audio.channel_2.volume = 0
+
+    score_sound -= 1
 
 
     for score_index, character in enumerate(str(score).zfill(3)):

@@ -1,211 +1,134 @@
-import threading
-import time
-
 import numpy as np
-import pyaudio
+import sounddevice as sd
+import math
+import time
+#duration = 2  # seconds
 
-BITRATE = 31440 #  31440 Hz and 10480 Hz possible on Atari
+BITRATE = 32000
+BLOCKSIZE = 1024
 
 waveform_0 = np.array([1]).astype(np.float32)
 waveform_1 = np.array([0,0,1,0,1,0,0,0,0,1,1,1,0,1,1]).astype(np.float32)
 waveform_4 = np.array([0, 1]).astype(np.float32)
+waveform_7 = np.array([0,0,1,0,1,1,0,0,1,1,1,1,1,0,0,0,1,1,0,1,1,1,0,1,0,1,0,0,0,0,1]).astype(np.float32)
 
 WAVEFORMS = {
     0: waveform_0,
     1: waveform_1,
-    4: waveform_4
+    4: waveform_4,
+    7: waveform_7
 }
 
-
-# Create a sample by stretching the waveforms by a frequency number
-# frequency = 4
-# sample = np.repeat(waveform_x, frequency)
-# Then extend the length with tile
-# sample = np.tile(sample, x)
-
-# Create two streams like this
-# p = PyAudio()
-# stream = p.open(format = pyaudio.paFloat32,
-#                 channels = 1,
-#                 rate = BITRATE,
-#                 output = True)
-
-
-# https://www.randomterrain.com/atari-2600-memories-music-and-sound.html#freq_wav_guide
-# https://www.randomterrain.com/atari-2600-memories-batari-basic-music-toy.html
-# https://stackoverflow.com/questions/47513950/how-to-loop-play-an-audio-with-pyaudio
-# https://stackoverflow.com/questions/67045992/how-can-i-make-my-audio-loop-with-pyaudio
+def lcm(a, b):
+    return abs(a * b) // math.gcd(a, b)
 
 class AudioChannel:
-    def __init__(self, audio):
-        self._audio = audio
+    def __init__(self):
+        #self._audio = audio
+        self._frames_per_buffer = BLOCKSIZE#self._audio._frames_per_buffer
 
         self._volume = 0
         self._frequency = 1
-        self._waveform = 0
+        self._waveform = 1
+        self._index = 0
+        self._sample = np.zeros(self._frames_per_buffer)
+        #self._set_sample()
 
-    def get_sample(self):
-        waveform = WAVEFORMS[self._waveform]
-        return np.repeat(waveform*self._volume, self._frequency)
+    def _set_sample(self):
+        #self._index = 0
+        if self._volume == 0 or self._frequency == 0:
+            self._index, self._sample = 0, np.zeros(self._frames_per_buffer)
+        else:
+            waveform = WAVEFORMS[self._waveform]
+            sample = np.repeat(waveform*self._volume, self._frequency)
+            #num_tiles = lcm(len(sample), self._frames_per_buffer)
+            self._index, self._sample = 0, sample#np.tile(sample, num_tiles)
 
-    # @property
-    # def volume(self):
-    #     return self._volume
-    #
-    # @volume.setter
-    # def volume(self):
+        #print(len(self._sample) / BLOCKSIZE)
+
+        #self._audio._set_sample()
+
+    def get_sample_slice(self):
+        sample = self._sample.take(range(self._index, self._index+self._frames_per_buffer), mode='wrap')
+        #sample = self._sample[self._index: self._index + self._frames_per_buffer]
+        self._index = (self._index + self._frames_per_buffer) % len(self._sample)
+        return sample
+
 
 def create_property(attr):
     internal_name = f"_{attr}"
     setattr(AudioChannel, attr, property(lambda self: getattr(self, internal_name)))
-    print(AudioChannel.volume)
 
     def setter(self, value):
-        print(self, internal_name, value)
         setattr(self, internal_name, value)
-        self._audio.set_sample()
+        self._set_sample()
 
     setattr(AudioChannel, attr, getattr(AudioChannel, attr).setter(setter))
 
 for attr in ["volume", "frequency", "waveform"]:
     create_property(attr)
 
+# frequency = 32
+# volume = 1
+# sample = volume * np.repeat(waveform_4, frequency)
+# sample = np.tile(sample, int(np.ceil(BLOCKSIZE / len(sample))))
+# #sample = sample.reshape(-1,1)
+# i = 0
 
-class Audio(threading.Thread):
+class Audio:
     def __init__(self):
-        super().__init__()
-        self.frames_per_buffer = 1024
+        self.channel_1 = AudioChannel()
+        self.channel_2 = AudioChannel()
 
-        self.channel_1 = AudioChannel(self)
-        self.channel_2 = AudioChannel(self)
+        self.volume = 0
 
-        # self.volume_1 = 0
-        # self.frequency_1 = 1
-        # self.waveform_1 = waveform_1
-        #
-        # self.volume_2 = 0
-        # self.frequency_2 = 1
-        # self.waveform_2 = waveform_4
+    def get_sample_slice(self):
+        return self.volume * (
+            self.channel_1.get_sample_slice() * .5 +
+            self.channel_2.get_sample_slice() * .5
+        ).reshape(-1,1)
 
-        self.loop = True
-
-        self.set_sample()
-
-        self.run()
-
-    def set_sample(self):
-        #sample_1 = np.repeat(self.waveform_1*self.volume_1, self.frequency_1)
-        sample_1 = self.channel_1.get_sample()
-        sample_1 = np.tile(sample_1, self.frames_per_buffer//2)[:self.frames_per_buffer]
-
-        sample_2 = self.channel_2.get_sample()
-        sample_2 = np.tile(sample_2, self.frames_per_buffer//2)[:self.frames_per_buffer]
-
-        #self.sample = np.concatenate((sample_1, sample_2))
-        self.sample = np.array(list(zip(sample_1, sample_2))).flatten()
-
-        #print(self.sample.tolist())
-
-    def stream_callback(self, in_data, frame_count, time_info, status_flags):
-        #print(self.waveform)
-        #print(in_data)
-        #sample = np.repeat(self.waveform_1, self.frequency_1)
-        #sample = np.tile(sample, self.frames_per_buffer//2)[:self.frames_per_buffer]
-        #print(self.loop, self.sample)
-        if self.loop:
-            return (self.sample, pyaudio.paContinue)
-        else:
-            return (in_data, pyaudio.paComplete)
-
-    def run(self):
-        #self.sample = np.repeat(self.waveform, self.frequency)
-
-        player = pyaudio.PyAudio()
-        stream = player.open(format = pyaudio.paFloat32,
-                        channels = 2,
-                        rate = BITRATE,
-                        output = True,
-                        #frames_per_buffer = len(self.sample),
-                        frames_per_buffer = self.frames_per_buffer,
-                        stream_callback = self.stream_callback,
-                        )
-
-        # PLAYBACK LOOP
-        #data = wf.readframes(self.CHUNK)
-
-        #sample = np.repeat(self.waveform, self.frequency)
-        #sample = np.tile(sample, 4)
-        #sample = np.tile(self.waveform, self.frequency)
-
-        #reps = BITRATE // 60 // len(sample)
-
-        #sample = np.tile(sample, reps)
-
-        #print(sample.tolist())
-
-        stream.start_stream()
-
-        #while self.loop:
-            #print(sample.tolist())
-            #stream.write(sample)
-            #data = wf.readframes(self.CHUNK)
-            #if data == b'':  # If file is over then rewind.
-            #    wf.rewind()
-            #    data = wf.readframes(self.CHUNK)
-
-    # def play(self, frequency=None, waveform=None, volume=None):
-    #     self.loop = True
-    #
-    #     if frequency is not None:
-    #         self.frequency = frequency
-    #
-    #     if waveform is not None:
-    #         self.waveform = waveform
-    #
-    #     if volume is not None:
-    #         self.volume = volume
-    #
-    #     self.start()
-
-    def stop(self):
-        self.loop = False
-
-
-# ac = AudioChannel(None)
-# ac.volume = 1
-# print(ac._volume)
-#
-#
-# 1/0
+#ac = AudioChannel()
+#ac.volume = 1
+#ac.waveform = 4
+#ac.frequency = 16
 
 audio = Audio()
+#audio.volume = 1
+#audio.channel_1.volume = 2
+#audio.channel_1.waveform = 4
+#audio.channel_1.frequency = 28
 
-audio.channel_1.waveform = 4
-audio.channel_1.frequency = 32
-audio.channel_1.volume = 1
+def callback(outdata, frames, time, status):
+    #global i
+    #print(frames, time.outputBufferDacTime, time.currentTime)
+    #if status:
+    #    print(status)
+    #outdata[:] = sample[:BLOCKSIZE]
+    #outdata[:] = sample.take(range(i, i+BLOCKSIZE), mode='wrap').reshape(-1,1)
+    #i = (i + BLOCKSIZE) % len(sample)
+    #outdata[:] = global_volume*ac.get_sample_slice().reshape(-1,1)
+    outdata[:] = audio.get_sample_slice()
 
-audio.channel_2.waveform = 0
-audio.channel_2.frequency = 32
+audio_context = sd.OutputStream(samplerate=BITRATE, channels=1, callback=callback, blocksize=BLOCKSIZE)
 
-#audio.set_sample()
+#with sd.OutputStream(samplerate=BITRATE, channels=1, callback=callback, blocksize=BLOCKSIZE):
+    #sd.sleep(int(duration * 1000))
+    #time.sleep(duration)
+#    for i in range(0, duration*10, 1):
+#        audio.channel_1.frequency += 1
+#        print(audio.channel_1.frequency)
+#        time.sleep(.5)
 
-for i in range(5):
-    time.sleep(.5)
-    audio.channel_2.volume = 1
-    #audio.set_sample()
-    time.sleep(.5)
-    audio.channel_2.volume = 0
-    #audio.set_sample()
+if __name__ == '__main__':
+    with audio_context:
+        audio.volume = 1
+        audio.channel_1.volume = 2
+        audio.channel_1.waveform = 7
+        audio.channel_1.frequency = 31
 
-# channel_1 = AudioChannel(waveform_4)
-# channel_2 = AudioChannel(waveform_1)
-#
-# channel_1.play(frequency=64)
-# channel_2.play(frequency=32)
-
-#time.sleep(3)
-
-#channel_1.stop()
-#channel_2.stop()
-
-audio.stop()
+        #time.sleep(1)
+        for i in range(10):
+            audio.channel_1.volume -= .2
+            audio.channel_1.frequency += 1
+            time.sleep(.1)

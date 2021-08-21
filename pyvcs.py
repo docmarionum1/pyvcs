@@ -16,6 +16,7 @@ import sdl2.ext
 
 from font import uppercase, lowercase
 from state import GLOBAL_STATE
+from audio import audio, audio_context
 
 import inspect
 
@@ -631,14 +632,14 @@ def main():
     # Flush events
     for event in sdl2.ext.get_events():
         pass
-
-    with SetTrace(monitor):
-        exec(open(sys.argv[1]).read(), {
-            "USER_CODE": True,
-            "pyvcs":  Namespace(**globals()),
-            #"pyvcs": PYVCS(),
-            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
-        })
+    with audio_context:
+        with SetTrace(monitor):
+            exec(open(sys.argv[1]).read(), {
+                "USER_CODE": True,
+                "pyvcs":  Namespace(**globals()),
+                #"pyvcs": PYVCS(),
+                "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
+            })
 
     sdl2.SDL_DestroyTexture(texture)
     sdl2.SDL_DestroyRenderer(renderer.renderer)
