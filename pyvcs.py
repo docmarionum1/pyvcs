@@ -10,13 +10,13 @@ from pathlib import Path
 import sys
 import time
 
-import numpy as np
+#import numpy as np
 import sdl2
 import sdl2.ext
 
 from font import uppercase, lowercase
 from state import GLOBAL_STATE
-from audio import audio, audio_context
+#from audio import audio, audio_context
 
 import inspect
 
@@ -318,7 +318,7 @@ def wait_for_hsync():
     WAIT_FOR_HSYNC = True
     HSYNC = False
     while not HSYNC:
-        continue
+        display_step()
     WAIT_FOR_HSYNC = False
 
 def wait_for_vsync():
@@ -327,7 +327,7 @@ def wait_for_vsync():
     WAIT_FOR_VSYNC = True
     VSYNC = False
     while Y != VSYNC_LINE:
-        continue
+        display_step()
     WAIT_FOR_VSYNC = False
 
 
@@ -649,5 +649,32 @@ def main():
     #print(PLAYFIELD_COLOR, playfield.color)
     print(playfield.color)
 
+def display_step3():
+    #print("yo")
+    display_step()
+    display_step()
+    display_step()
+
+def main2():
+    # Flush events
+    for event in sdl2.ext.get_events():
+        pass
+    #with audio_context:
+    dis.dis(open(sys.argv[1]).read())
+    
+    exec(open(sys.argv[1]).read(), {
+        "USER_CODE": True,
+        "pyvcs":  Namespace(**globals()),
+        #"pyvcs": PYVCS(),
+        "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
+        "_pyvcs_display_step": display_step3
+
+    })
+
+    sdl2.SDL_DestroyTexture(texture)
+    sdl2.SDL_DestroyRenderer(renderer.renderer)
+    sdl2.SDL_DestroyWindow(window.window)
+    sdl2.ext.quit()
+
 if __name__ == '__main__':
-    main()
+    main2()
