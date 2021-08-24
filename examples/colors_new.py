@@ -15,7 +15,7 @@ while True:
         y += 8
 
         pyvcs.wait_for_hsync()
-        for j in range(6):
+        for j in range(4):
             pyvcs.set_background(y)
 
         pyvcs.set_background(y + 1)
@@ -27,7 +27,7 @@ while True:
         pyvcs.set_background(y + 7)
 
         pyvcs.wait_for_hsync()
-        for j in range(6):
+        for j in range(4):
             pyvcs.set_background(y)
 
         pyvcs.set_background(y + 1)
@@ -40,3 +40,6 @@ while True:
 
 
     y = -8
+
+    if pyvcs.get_key_state(pyvcs.sdl2.SDLK_ESCAPE):
+        break

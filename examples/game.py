@@ -1,4 +1,4 @@
-from .game_lib import helper
+#from .game_lib import helper
 #from pyvcs import set_background
 
 def bar(a):
@@ -172,8 +172,9 @@ def start_screen():
             j = i // 4
             if j < len(left_start_screen):
                 pyvcs.playfield.sprite = left_start_screen[j]
-                for k in range(12): # Kill some time
+                for k in range(4): # Kill some time
                     pass
+                k # Kill slightly more time
                 pyvcs.playfield.sprite = right_start_screen[j]
             i += 1
 
@@ -254,10 +255,13 @@ while not quit:
 
     # Vsync leaves us with one scanline before the visible
     # section begins; so wait till the next scanline
-    pyvcs.wait_for_hsync()
+    #pyvcs.wait_for_hsync()
 
     for character in score_text:
         character.enable(1)
+
+    pyvcs.wait_for_hsync()
+    pyvcs.wait_for_hsync()
 
     # height the top of the playfield
     for j in range(TOP_HEIGHT - 2):

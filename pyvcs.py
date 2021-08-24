@@ -16,7 +16,7 @@ import sdl2.ext
 
 from font import uppercase, lowercase
 from state import GLOBAL_STATE
-#from audio import audio, audio_context
+from audio import audio, audio_context
 
 import inspect
 
@@ -25,7 +25,7 @@ WIDTH = 128
 HEIGHT = 72
 
 # Blank parts of the screen at the top and left
-HBLANK = 97
+HBLANK = 64
 VBLANK = 32
 VSYNC_LINE = -1 # 1 scanline before the visible part of the image starts
 
@@ -59,6 +59,19 @@ texture = sdl2.SDL_CreateTexture(renderer.renderer, sdl2.SDL_PIXELFORMAT_RGB332,
 
 window.show()
 
+class Display:
+    def __init__(self):
+        self._background = 0
+
+    @property
+    def background(self):
+        return self._background
+
+    @background.setter
+    def background(self, color):
+        self._background = color
+
+display = Display()
 
 class SetTrace(object):
     def __init__(self, func):
@@ -71,14 +84,22 @@ class SetTrace(object):
     def __exit__(self, ext_type, exc_value, traceback):
         sys.settrace(None)
 
-BACKGROUND_COLOR = 0
+# BACKGROUND_COLOR = 0
+#
+# @property
+# def background():
+#     return BACKGROUND_COLOR
+#
+# @background.setter
+# def background(color):
+#     global BACKGROUND_COLOR
+#     HELL_YEAH = True
+#     BACKGROUND_COLOR = color
 
-def background(color):
-    global BACKGROUND_COLOR
-    HELL_YEAH = True
-    BACKGROUND_COLOR = color
+#set_background = background
 
-set_background = background
+def set_background(color):
+    display.background = color
 
 #class PlayfieldMode(IntEnum):
 #    DUPLICATE = 0
@@ -417,7 +438,7 @@ def display_step():
 
     # TODO: Fun feature, turn off background filling for painting program
     if pixel is None:
-        pixel = BACKGROUND_COLOR
+        pixel = display._background# BACKGROUND_COLOR
 
     write_color_to_frame(pixel)
 
@@ -632,14 +653,14 @@ def main():
     # Flush events
     for event in sdl2.ext.get_events():
         pass
-    with audio_context:
-        with SetTrace(monitor):
-            exec(open(sys.argv[1]).read(), {
-                "USER_CODE": True,
-                "pyvcs":  Namespace(**globals()),
-                #"pyvcs": PYVCS(),
-                "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
-            })
+    #with audio_context:
+    with SetTrace(monitor):
+        exec(open(sys.argv[1]).read(), {
+            "USER_CODE": True,
+            "pyvcs":  Namespace(**globals()),
+            #"pyvcs": PYVCS(),
+            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
+        })
 
     sdl2.SDL_DestroyTexture(texture)
     sdl2.SDL_DestroyRenderer(renderer.renderer)
@@ -659,17 +680,17 @@ def main2():
     # Flush events
     for event in sdl2.ext.get_events():
         pass
-    #with audio_context:
-    dis.dis(open(sys.argv[1]).read())
-    
-    exec(open(sys.argv[1]).read(), {
-        "USER_CODE": True,
-        "pyvcs":  Namespace(**globals()),
-        #"pyvcs": PYVCS(),
-        "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
-        "_pyvcs_display_step": display_step3
+    with audio_context:
+        dis.dis(open(sys.argv[1]).read())
 
-    })
+        exec(open(sys.argv[1]).read(), {
+            "USER_CODE": True,
+            "pyvcs":  Namespace(**globals()),
+            #"pyvcs": PYVCS(),
+            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
+            "_pyvcs_display_step": display_step3
+
+        })
 
     sdl2.SDL_DestroyTexture(texture)
     sdl2.SDL_DestroyRenderer(renderer.renderer)
