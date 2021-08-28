@@ -1,51 +1,21 @@
 #from .game_lib import helper
 #from pyvcs import set_background
 
-def bar(a):
-    return a*a
-
-def foo():
-    c = 0
-    print('bar')
-    a = 1 + 1
-    for i in range(1200000):
-        if i % 100000 == 0:
-            print(i)
-        if i % 2:
-            a += a + i
-
-    b = bar(a + 2)
-    print('barb', b % 30000)
-    #print("tickle", ticks, monitor.ticks)
-    return b*a % 50000
-    #print('barbar')
-    #print('barbarbar')
-
-#foo()
-# def game():
-#     #USER_CODE_2 = 2
-#     a = 1
-#     b = a + 1
-#     c = helper(b)
-#     print(a, b, c)
-#
-# game()
-
 # Size within the playfield walls
 WALL_WIDTH = 4
 TOP_HEIGHT = 6
-WIDTH = pyvcs.WIDTH - WALL_WIDTH * 2
-HEIGHT = pyvcs.HEIGHT - WALL_WIDTH - TOP_HEIGHT
+WIDTH = pyvcs.constants.WIDTH - WALL_WIDTH * 2
+HEIGHT = pyvcs.constants.HEIGHT - WALL_WIDTH - TOP_HEIGHT
 
 color = 128
-pyvcs.set_background(255)
+pyvcs.background = 255
 ball = pyvcs.Ball(4)
 ball.x = WIDTH - 12
 ball_y = 12
 ball.dx = -1
 ball.dy = -1
 ball_y_end = 54
-#pyvcs.set_playfield(255)
+
 player_sprite = [
     [0],
     [1, 1, 1, 1, 1, 1, 1, 1],
@@ -67,36 +37,25 @@ player.y = y
 player_dict = {(player.y + i - 1): player_sprite[i] for i in range(player_height)}
 player_dict[player.y + player_height] = 0
 
-
-
+top_bottom = [255, 255]
+wall = [128, 0]
 pyvcs.playfield.sprite = [255, 255] #[128, 0]
 pyvcs.playfield.reflect = False
 pyvcs.playfield.enable()
 
 
-
-
 quit = False
 
-#ball.enable()
-#while True:
-#    continue
-
-playfield = pyvcs.playfield
-top_bottom = [255, 255]
-wall = [128, 0]
-
 missiles = {}
-#missile_list = []
-
-#objects = [player]
-
-
 
 colliding = False
 hp = HEIGHT
 score = 0
-score_text = [pyvcs.Text(0, x=WIDTH//2-5), pyvcs.Text(0, x=WIDTH//2), pyvcs.Text(0, x=WIDTH//2+5)]
+score_text = [
+    pyvcs.Text(0, x=WIDTH//2-5),
+    pyvcs.Text(0, x=WIDTH//2),
+    pyvcs.Text(0, x=WIDTH//2+5)
+]
 
 missle_spawn_counter = 6
 num_missiles = 0
@@ -156,7 +115,7 @@ def start_screen():
     x += 6
     s2 = pyvcs.Text("s", color=color, x=x)
 
-    x += 16
+    x += 19
     s3 = pyvcs.Text("s", color=color, x=x)
     x += 6
     p = pyvcs.Text("p", color=color, x=x)
@@ -174,7 +133,7 @@ def start_screen():
                 pyvcs.playfield.sprite = left_start_screen[j]
                 for k in range(4): # Kill some time
                     pass
-                k # Kill slightly more time
+                #k # Kill slightly more time
                 pyvcs.playfield.sprite = right_start_screen[j]
             i += 1
 
@@ -257,10 +216,12 @@ while not quit:
     # section begins; so wait till the next scanline
     #pyvcs.wait_for_hsync()
 
+    pyvcs.wait_for_hsync()
+
     for character in score_text:
         character.enable(1)
 
-    pyvcs.wait_for_hsync()
+
     pyvcs.wait_for_hsync()
 
     # height the top of the playfield
@@ -269,11 +230,6 @@ while not quit:
             for character in score_text:
                 character.display(i=4+j, disable=3-j)
         pyvcs.wait_for_hsync()
-
-    # The following lines kill just under one scanline of waiting. We need to do this
-    # to allow drawing the player in the top left corner. Otherwise it gets cut off.
-    #for j in range(19):
-    #    pass
 
     # Count visible scanlines
     i = -1
@@ -324,7 +280,7 @@ while not quit:
 
     player.sprite = [0]
     # height the bottom of the playfield
-    playfield.sprite = top_bottom
+    pyvcs.playfield.sprite = top_bottom
     for i in range(WALL_WIDTH):
         pyvcs.wait_for_hsync()
 
@@ -480,7 +436,7 @@ while not quit:
                 #if isinstance(missile, pyvcs.Missile):
                 missile.x += missile.dx
 
-                if missile.x < 0 or missile.x > pyvcs.WIDTH:
+                if missile.x < 0 or missile.x > pyvcs.constants.WIDTH:
                     to_delete.append(missile)
 
     for missile in to_delete:

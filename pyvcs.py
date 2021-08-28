@@ -10,100 +10,245 @@ from pathlib import Path
 import sys
 import time
 
-#import numpy as np
 import sdl2
 import sdl2.ext
 
-from font import uppercase, lowercase
-from state import GLOBAL_STATE
 from audio import audio, audio_context
-
-import inspect
-
-# Visible screen size
-WIDTH = 128
-HEIGHT = 72
-
-# Blank parts of the screen at the top and left
-HBLANK = 64
-VBLANK = 32
-VSYNC_LINE = -1 # 1 scanline before the visible part of the image starts
-
-# How many steps the display advances for each operation on the CPU
-DISPLAY_CLOCK_RATIO = 3
-
-# WIDTH + HBLANK % 3 == 0 because the display does 3 steps per user instruction
-assert (WIDTH + HBLANK) % DISPLAY_CLOCK_RATIO == 0
-
-PLAYFIELD_WIDTH = WIDTH // 2 # The playfield is half the width of the screen
-PLAYFIELD_RESOLUTION = 4 # Each bit of the playfield sprite is equal to 4 display clock counts
-PLAYFIELD_SPRITE_WIDTH_BYTES = PLAYFIELD_WIDTH // PLAYFIELD_RESOLUTION // 8
-
-RESOLUTION = (WIDTH, HEIGHT)
-FRAME = [0] * (RESOLUTION[0] * RESOLUTION[1] * 1)
-FRAME = array.array('B', FRAME)
+import constants
+from font import uppercase, lowercase
 
 
+class Input:
+    def __init__(self):
+        self.keys = {
+            sdl2.SDLK_UP: False,
+            sdl2.SDLK_DOWN: False,
+            sdl2.SDLK_LEFT: False,
+            sdl2.SDLK_RIGHT: False,
+            sdl2.SDLK_ESCAPE: False,
+            sdl2.SDLK_SPACE: False
+        }
 
+    # Process events once a frame
+    def _get_events(self):
+        for event in sdl2.ext.get_events():
+            key = event.key.keysym.sym
+            if key in self.keys:
+                if event.type == sdl2.SDL_KEYDOWN:
+                    self.keys[key] = True
+                    #print(KEY)
+                    #break
+                elif event.type == sdl2.SDL_KEYUP:
+                    self.keys[key] = False
 
+    def get_key_state(self, keycode):
+        return self.keys[keycode]
 
-MV = memoryview(FRAME).cast("B")
-FRAME_PTR = ctypes.c_void_p(FRAME.buffer_info()[0])
+input = Input()
 
-
-sdl2.ext.init()
-window = sdl2.ext.Window("window", size=RESOLUTION, flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
-renderer = sdl2.ext.Renderer(window, logical_size=RESOLUTION, flags=sdl2.SDL_RENDERER_ACCELERATED)
-surface = sdl2.SDL_CreateRGBSurfaceWithFormat(0, *RESOLUTION, 8, sdl2.SDL_PIXELFORMAT_RGB332)
-texture = sdl2.SDL_CreateTexture(renderer.renderer, sdl2.SDL_PIXELFORMAT_RGB332, sdl2.SDL_TEXTUREACCESS_STREAMING, *RESOLUTION)
-
-window.show()
 
 class Display:
     def __init__(self):
+        self._set_contstants()
+
+        self.x = 0
+        self.y = 0
         self._background = 0
+        self._players = []
+        self._missiles = []
 
-    @property
-    def background(self):
-        return self._background
+        self._start = time.time()
 
-    @background.setter
-    def background(self, color):
-        self._background = color
+        self._init_sdl()
+
+    def _set_contstants(self):
+        self.width = constants.WIDTH
+        self.height = constants.HEIGHT
+        self.resolution = (self.width, self.height)
+
+        # Create an array to store the pixel of each frame
+        self.frame = array.array(
+            'B',
+            [0] * (self.width * self.height * constants.PIXEL_FORMAT_BYTES)
+        )
+        # Pointer to the frame
+        self.frame_pointer = ctypes.c_void_p(self.frame.buffer_info()[0])
+
+        self.hblank = constants.HBLANK
+        self.vblank = constants.VBLANK
+        self.vsync_line = constants.VSYNC_LINE
+        self.display_clock_ratio = constants.DISPLAY_CLOCK_RATIO
+
+    def _init_sdl(self):
+        sdl2.ext.init()
+        self.window = sdl2.ext.Window(
+            "window",
+            size=self.resolution,
+            flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP
+        )
+        self.renderer = sdl2.ext.Renderer(
+            self.window,
+            logical_size=self.resolution,
+            flags=sdl2.SDL_RENDERER_ACCELERATED | sdl2.SDL_RENDERER_PRESENTVSYNC
+        )
+        #self.surface = sdl2.SDL_CreateRGBSurfaceWithFormat(0, *RESOLUTION, 8, sdl2.SDL_PIXELFORMAT_RGB332)
+        self.texture = sdl2.SDL_CreateTexture(
+            self.renderer.renderer,
+            constants.PIXEL_FORMAT,
+            sdl2.SDL_TEXTUREACCESS_STREAMING,
+            *self.resolution
+        )
+
+        self.window.show()
+
+    def _quit(self):
+        sdl2.SDL_DestroyTexture(self.texture)
+        sdl2.SDL_DestroyRenderer(self.renderer.renderer)
+        sdl2.SDL_DestroyWindow(self.window.window)
+        sdl2.ext.quit()
+
+    def _write_pixel(self, x, y):
+        # Determine the color of this pixel by checking if any of the objects are set in this order
+        #   players / text
+        #   missiles / ball
+        #   playfield
+        #   background
+        pixel = None
+        collisions = set()
+
+        for player in self._players:
+            if player._enabled and (x >= player.x) and (x < (player.x + player._internal_width)):
+                if player.reflect:
+                    if player._reverse[x - player.x]:
+                        if pixel is None:
+                            pixel = player.color
+                        if player.collidable:
+                            collisions.add(player)
+                else:
+                    if player._bits[x - player.x]:
+                        if pixel is None:
+                            pixel = player.color
+                        if player.collidable:
+                            collisions.add(player)
+
+        for missile in self._missiles:
+            if (
+                ((missile._enabled == 1) or (missile._enabled < 0)) and
+                (x >= missile.x) and (x < (missile.x + missile.width))
+            ):
+                if pixel is None:
+                    pixel = missile.player.color
+                if missile.collidable:
+                    collisions.add(missile)
+
+        playfield = self._playfield
+        if playfield._enabled:
+            # Left half
+            if x < playfield._internal_width:
+                if playfield._bits[x]:
+                    if pixel is None:
+                        pixel = playfield.color
+                    if playfield.collidable:
+                        collisions.add(playfield)
+            else:
+                if playfield.reflect:
+                    if playfield._reverse[x - playfield._internal_width]:
+                        if pixel is None:
+                            pixel = playfield.color
+                        if playfield.collidable:
+                            collisions.add(playfield)
+                else:
+                    if playfield._bits[x - playfield._internal_width]:
+                        if pixel is None:
+                            pixel = playfield.color
+                        if playfield.collidable:
+                            collisions.add(playfield)
+
+        if len(collisions) > 1:
+            for object in collisions:
+                object.collisions.update(collisions)
+
+        # TODO: Fun feature, turn off background filling for painting program
+        if pixel is None:
+            pixel = self._background# BACKGROUND_COLOR
+
+        # Set the color; possibly return it and have someone else set it
+        self.frame[y * self.width + x] = pixel
+
+    def _present_frame(self):
+        sdl2.SDL_UpdateTexture(
+            self.texture.contents,
+            None,
+            self.frame_pointer,
+            self.width
+        )
+        self.renderer.copy(self.texture.contents)
+        self.renderer.present()
+        self.renderer.clear()
+        self.window.refresh()
+
+    def _display_fps(self):
+        sys.stdout.write('\r')
+        sys.stdout.write("%.2f" % (1 / (time.time() - self._start)))
+        sys.stdout.flush()
+        self._start = time.time()
+
+    def _display_step(self):
+        # TODO: Figure out if this is more efficient to store them locally vs access them
+        # as an attr constantly
+        x, y = self.x, self.y
+
+        # Process visible section of of the screen
+        if (x >= 0) and (y >= 0):
+            self._write_pixel(x, y)
+
+        # X always increments by one for each display step
+        x += 1
+
+        if x == self.width:
+            x = -self.hblank
+            y += 1
+            #print(y)
+            # If we've finished the last line
+            if y == self.height:
+                self._present_frame()
+                input._get_events()
+                self._display_fps()
+                y = -self.vblank
+            # If we're in the visible secrtion, update the objects' enabled status
+            elif y >= 0:
+                for object in self._missiles + self._players + [self._playfield]:
+                    object._enabled = object._next_enabled
+
+                    if object._next_enabled > 1:
+                        object._next_enabled -= 1
+                    if object._next_enabled < 0:
+                        object._next_enabled += 1
+
+            # If we're on the vsync line, return vysnc code
+            elif y == self.vsync_line:
+                self.x, self.y = x, y
+                return 2 # VSYNC returns 2, also counts as a hsync
+
+            self.x, self.y = x, y
+            return 1 # HYSNC
+
+        # We didn't get to the end of a line yet
+        self.x = x
+        return 0
+
+    def wait_for_hsync(self):
+        while self._display_step() == 0:
+            pass
+
+    def wait_for_vsync(self):
+        while self._display_step() < 2:
+            pass
+
+
 
 display = Display()
 
-class SetTrace(object):
-    def __init__(self, func):
-        self.func = func
-
-    def __enter__(self):
-        sys.settrace(self.func)
-        return self
-
-    def __exit__(self, ext_type, exc_value, traceback):
-        sys.settrace(None)
-
-# BACKGROUND_COLOR = 0
-#
-# @property
-# def background():
-#     return BACKGROUND_COLOR
-#
-# @background.setter
-# def background(color):
-#     global BACKGROUND_COLOR
-#     HELL_YEAH = True
-#     BACKGROUND_COLOR = color
-
-#set_background = background
-
-def set_background(color):
-    display.background = color
-
-#class PlayfieldMode(IntEnum):
-#    DUPLICATE = 0
-#    REFLECT = 1
 
 class Object:
     def __init__(self, collection=None, enabled=0, collidable=True):
@@ -230,26 +375,20 @@ class Sprite(Object):
 
 class Playfield(Sprite):
     def __init__(self):
-        super().__init__(PLAYFIELD_SPRITE_WIDTH_BYTES, PLAYFIELD_RESOLUTION)
-
-        # Whether to duplicate or reflect the playfield on the right side of the screen
-        #self.mode = PlayfieldMode.DUPLICATE
-
+        super().__init__(constants.PLAYFIELD_SPRITE_WIDTH_BYTES, constants.PLAYFIELD_RESOLUTION)
         self.spawn_ball = self.spawn_moveable
 
 
-playfield = Playfield()
+display._playfield = Playfield()
 
 class Moveable:
     def __init__(self, x=0):
         self.x = x
 
-PLAYERS = []
-
 class Player(Sprite, Moveable):
     def __init__(self, sprite, *args, color=0, width_multiplier=1, x=0, **kwargs):
         #super(Sprite, self).__init__(1, width_multiplier, sprite=sprite, color=color)
-        Sprite.__init__(self, 1, width_multiplier, PLAYERS, *args, sprite=sprite, color=color, **kwargs)
+        Sprite.__init__(self, 1, width_multiplier, display._players, *args, sprite=sprite, color=color, **kwargs)
         #super(Moveable, self).__init__(x)
         Moveable.__init__(self, x)
 
@@ -271,6 +410,9 @@ class Text(Player):
         else:
             super().display(*args, sprite=[0], **kwargs)
 
+    def display0(self, *args, **kwargs):
+        self.display(*args, i=0, **kwargs)
+
     def set_character(self, character, upper=None):
         character = str(character)
         if upper is None and character.isupper():
@@ -280,422 +422,64 @@ class Text(Player):
         else:
             self._sprite_map = lowercase[character.lower()]
 
-MISSILES = []
 
 class Missile(Object, Moveable):
     def __init__(self, player, width, x=0):
-        Object.__init__(self, MISSILES)
+        Object.__init__(self, display._missiles)
         Moveable.__init__(self, x)
 
         self.player = player
         self.width = width
 
-        #MISSILES.append(self)
-
-    #def __del__(self):
-    #    print(MISSILES)
-    #    MISSILES.remove(self)
-    #    print(MISSILES)
-    # def delete(self):
-    #     MISSILES.remove(self)
-
-Ball = partial(Missile, playfield)
-
-#BALLS = []
-X = -HBLANK
-Y = -VBLANK
-
-
-def write_color_to_frame(color):
-    i = Y*RESOLUTION[0] + X
-    FRAME[i] = color
-
-# class Ball:
-#     def __init__(self, width):
-#         self.width = width
-#         self.enabled = False
-#         self.x = 0
-#         BALLS.append(self)
-#
-#     def enable(self, x=None):
-#         if x is None:
-#             self.x = max(X, 0)
-#         else:
-#             self.x = x
-#         self.enabled = True
-#
-#     def disable(self):
-#         self.enabled = False
-
-HSYNC = False
-WAIT_FOR_HSYNC = False
-
-VSYNC = False
-WAIT_FOR_VSYNC = False
-
-def wait_for_hsync():
-    USER_CODE = True
-    global HSYNC, WAIT_FOR_HSYNC
-    WAIT_FOR_HSYNC = True
-    HSYNC = False
-    while not HSYNC:
-        display_step()
-    WAIT_FOR_HSYNC = False
-
-def wait_for_vsync():
-    USER_CODE = True
-    global VSYNC, WAIT_FOR_VSYNC
-    WAIT_FOR_VSYNC = True
-    VSYNC = False
-    while Y != VSYNC_LINE:
-        display_step()
-    WAIT_FOR_VSYNC = False
-
-
-KEYS = {
-    sdl2.SDLK_UP: False,
-    sdl2.SDLK_DOWN: False,
-    sdl2.SDLK_LEFT: False,
-    sdl2.SDLK_RIGHT: False,
-    sdl2.SDLK_ESCAPE: False,
-    sdl2.SDLK_q: False,
-    sdl2.SDLK_SPACE: False
-}
-
-
-
-def get_key_state(keycode):
-    return KEYS[keycode]
-
-START = time.time()
-
-def display_step():
-    global X, Y, START, HSYNC, VSYNC
-
-    if X < 0:
-        X += 1
-        return
-
-    if Y < 0:
-        X += 1
-        if X == RESOLUTION[0]:
-            HSYNC = True
-            X = -HBLANK
-            Y += 1
-        return
-
-    pixel = None
-    collisions = set()
-
-    for missile in MISSILES:
-        if (
-            ((missile._enabled == 1) or (missile._enabled < 0)) and
-            (X >= missile.x) and (X < (missile.x + missile.width))
-        ):
-            if pixel is None:
-                pixel = missile.player.color
-
-            if missile.collidable:
-                collisions.add(missile)
-
-    for player in PLAYERS:
-        if player._enabled and (X >= player.x) and (X < (player.x + player._internal_width)):
-            if player.reflect:
-                if player._reverse[X - player.x]:
-                    if pixel is None:
-                        pixel = player.color
-                    if player.collidable:
-                        collisions.add(player)
-            else:
-                if player._bits[X - player.x]:
-                    if pixel is None:
-                        pixel = player.color
-                    if player.collidable:
-                        collisions.add(player)
-
-    if playfield._enabled:
-        # Left half
-        if X < playfield._internal_width:
-            if playfield._bits[X]:
-                if pixel is None:
-                    pixel = playfield.color
-                collisions.add(playfield)
-        else:
-            if playfield.reflect:
-                if playfield._reverse[X - playfield._internal_width]:
-                    if pixel is None:
-                        pixel = playfield.color
-                    collisions.add(playfield)
-            else:
-                if playfield._bits[X - playfield._internal_width]:
-                    if pixel is None:
-                        pixel = playfield.color
-                    collisions.add(playfield)
-
-    if len(collisions) > 1:
-        for obj in collisions:
-            obj.collisions.update(collisions)
-
-    # TODO: Fun feature, turn off background filling for painting program
-    if pixel is None:
-        pixel = display._background# BACKGROUND_COLOR
-
-    write_color_to_frame(pixel)
-
-    X += 1
-    if X == RESOLUTION[0]:
-        HSYNC = True
-        X = -HBLANK
-        Y += 1
-
-        for object in MISSILES + PLAYERS + [playfield]:
-            object._enabled = object._next_enabled
-
-            if object._next_enabled > 1:
-                object._next_enabled -= 1
-            if object._next_enabled < 0:
-                object._next_enabled += 1
-
-        # for missile in MISSILES:
-        #     missile._enabled = missile._next_enabled
-        #
-        #     if missile._next_enabled > 1:
-        #         missile._next_enabled -= 1
-        #     if missile._next_enabled < 0:
-        #         missile._next_enabled += 1
-
-        if Y == RESOLUTION[1]:
-            Y = -VBLANK
-
-            sdl2.SDL_UpdateTexture(texture.contents, None,FRAME_PTR, RESOLUTION[0])
-            renderer.copy(texture.contents)
-            renderer.present()
-            renderer.clear()
-            window.refresh()
-
-            for event in sdl2.ext.get_events():
-                if event.type == sdl2.SDL_KEYDOWN:
-                    KEYS[event.key.keysym.sym] = True
-                    #print(KEY)
-                    #break
-                elif event.type == sdl2.SDL_KEYUP:
-                    KEYS[event.key.keysym.sym] = False
-                    #break
-                #print(event)
-
-
-
-            sys.stdout.write('\r')
-            sys.stdout.write("%.2f" % (1 / (time.time() - START)))#, str(KEY).zfill(8)))
-            sys.stdout.flush()
-            START = time.time()
-            #VSYNC = True
-            #HSYNC = True
-            #print("HYS  ", HSYNC)
-
-def monitor(frame, event, arg):
-    #global HYSNC, WAIT_FOR_HSYNC
-    #if not hasattr(monitor, 'api_reference'):
-    #    monitor.api_reference = None
-
-    if "USER_CODE" not in frame.f_globals and "USER_CODE" not in frame.f_locals:# and (not frame.f_back or "USER_CODE" not in frame.f_back.f_globals):
-    #if "USER_CODE" not in frame.f_globals:
-        frame.f_trace_opcodes = False
-        frame.f_trace = None
-        return monitor
-
-    frame.f_trace_opcodes = True
-
-    if event != "opcode":
-        return monitor
-
-    if (HSYNC and WAIT_FOR_HSYNC) or (VSYNC and WAIT_FOR_VSYNC):
-       return monitor
-
-    # print(dir(frame))
-    # print(frame.f_code)
-    # print(dir(frame.f_code))
-
-    code = frame.f_code
-    offset = frame.f_lasti
-    opcode_name = opcode.opname[code.co_code[offset]]
-
-    # print(f" {id(frame)} | {event:10} | {str(arg):>4} |", end=' ')
-    # print(f"{frame.f_lineno:>4} | {frame.f_lasti:>6} |", end=' ')
-    # print(f"{opcode.opname[code.co_code[offset]]:<18} | {code.co_code[offset+1]} |", end=' ')
-    # #print(code.co_code[offset:offset+2])
-    # #print(eval(code.co_code[offset:offset+2]))
-    # print(inspect.getframeinfo(frame))
-    # print(dis.disassemble(code, lasti=offset))
-    #print(code.co_stacksize)
-    #print(dis.stack_effect(code.co_code[offset]))
-    #print(frame.f_code.co_names)
-    #print(inspect.getsource(code.co_code))
-    #print(inspect.stack()[0])
-
-    # if opcode_name == "LOAD_NAME":
-    #     arg_name = frame.f_code.co_names[code.co_code[offset+1]]
-    #     #print(dis.stack_effect(code.co_code[offset], code.co_code[offset+1]))
-    #     if arg_name == "pyvcs":
-    #         display_step()
-    #         display_step()
-    #         display_step()
-    #         #frame.f_trace_opcodes = False
-    #         frame.f_trace = None
-    #         return monitor
-
-    # Interacting with the API should take one op code
-    # TODO: This is still really rough, there should be a more consistent way to figure out
-    # if this interacts with the api
-    if (event == "opcode") and opcode_name in ["LOAD_NAME", "LOAD_ATTR", "LOAD_METHOD", "CALL_METHOD"]:
-        arg_name = frame.f_code.co_names[code.co_code[offset+1]]
-
-        # if (opcode_name == "LOAD_NAME") and (
-        #     arg_name == "pyvcs"
-        # ):
-        #     #frame.f_trace_opcodes = False
-        #     return monitor
-        #
-        # if opcode_name in ["LOAD_METHOD", "LOAD_ATTR"]:
-        #     if arg_name in globals():
-        #         monitor.api_reference = globals()[arg_name]
-        #         return monitor
-        #     else:
-        #         monitor.api_reference = None
-
-        if opcode_name in ["LOAD_NAME", "LOAD_ATTR", "LOAD_GLOBAL"]:
-            if arg_name == "pyvcs":
-                monitor.api_reference = globals()
-                return monitor
-            elif hasattr(monitor.api_reference, arg_name):
-                monitor.api_reference = getattr(monitor.api_reference, arg_name)
-                return monitor
-            elif isinstance(monitor.api_reference, Iterable) and arg_name in monitor.api_reference:
-                monitor.api_reference = monitor.api_reference[arg_name]
-                return monitor
-
-            #elif opcode_name == "LOAD_METHOD":
-            #    monitor.api_reference = None
-        elif opcode_name == "LOAD_METHOD":
-            if isinstance(monitor.api_reference, Iterable) and arg_name in monitor.api_reference:
-                monitor.api_method_count += 1
-                return monitor
-            elif hasattr(monitor.api_reference, arg_name):
-                monitor.api_method_count += 1
-                return monitor
-        elif opcode_name == "CALL_METHOD" and monitor.api_method_count > 0:
-            monitor.api_method_count -= 1
-            return monitor
-
-        #monitor.api_reference = None
-
-
-    # print(f" {id(frame)} | {event:10} | {str(arg):>4} |", end=' ')
-    # print(f"{frame.f_lineno:>4} | {frame.f_lasti:>6} |", end=' ')
-    # print(f"{opcode.opname[code.co_code[offset]]:<18} | {code.co_code[offset+1]} |", end=' ')
-    # # #print(frame.f_code)
-    # # #print(frame.f_code.co_consts)
-    # print(frame.f_code.co_names)
-    # print(frame.f_code.co_freevars)
-    # #print(monitor.api_reference)
-    # #print(inspect.stack())
-    # print()
-
-    if event == "opcode":
-        # Do three system steps and then return
-        #for i in range(3):
-            #if (HSYNC and WAIT_FOR_HSYNC) or (VSYNC and WAIT_FOR_VSYNC):
-            #    return monitor
-        #    display_step()
-        display_step()
-        display_step()
-        display_step()
-
-    return monitor
-
-monitor.api_reference = None
-monitor.api_method_count = 0
-
-def _resolve_name(name):
-    parts = name.lower().split("_")
-    parent = globals()
-
-    for part in parts[:-1]:
-        if hasattr(parent, part):
-            parent = getattr(parent, part)
-        elif isinstance(parent, Iterable) and part in parent:
-            parent = parent[part]
-
-    return parent, parts[-1]
+Ball = partial(Missile, display._playfield)
 
 class PYVCS:
-    def __getattr__(self, name):
-        #if hasattr(self, name):
-        #    return getattr(self, name)
-        parent, part = _resolve_name(name)
+    constants = constants
+    wait_for_hsync = display.wait_for_hsync
+    wait_for_vsync = display.wait_for_vsync
 
-        if hasattr(parent, part):
-            return getattr(parent, part)
-        else:
-            return parent[part]
+    Player = Player
+    Ball = Ball
+    playfield = display._playfield
+    Text = Text
 
-    def __setattr__(self, name, value):
-        parent, part = _resolve_name(name)
+    audio = audio
+    sdl2 = sdl2
+    get_key_state = input.get_key_state
 
-        if hasattr(parent, part):
-            setattr(parent, part, value)
-        else:
-            parent[part] = value
+    @property
+    def background(self):
+        return display._background
 
+    @background.setter
+    def background(self, color):
+        display._background = color
 
+def display_step3():
+    #print("yo")
+    display._display_step()
+    display._display_step()
+    display._display_step()
 
 def main():
     # Flush events
     for event in sdl2.ext.get_events():
         pass
-    #with audio_context:
-    with SetTrace(monitor):
-        exec(open(sys.argv[1]).read(), {
-            "USER_CODE": True,
-            "pyvcs":  Namespace(**globals()),
-            #"pyvcs": PYVCS(),
-            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts)
-        })
 
-    sdl2.SDL_DestroyTexture(texture)
-    sdl2.SDL_DestroyRenderer(renderer.renderer)
-    sdl2.SDL_DestroyWindow(window.window)
-    sdl2.ext.quit()
-    print(X,Y)
-    #print(PLAYFIELD_COLOR, playfield.color)
-    print(playfield.color)
-
-def display_step3():
-    #print("yo")
-    display_step()
-    display_step()
-    display_step()
-
-def main2():
-    # Flush events
-    for event in sdl2.ext.get_events():
-        pass
     with audio_context:
-        dis.dis(open(sys.argv[1]).read())
+        #dis.dis(open(sys.argv[1]).read())
 
         exec(open(sys.argv[1]).read(), {
             "USER_CODE": True,
-            "pyvcs":  Namespace(**globals()),
+            "pyvcs": PYVCS(),
+            #"pyvcs":  Namespace(**globals()),
             #"pyvcs": PYVCS(),
             "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
             "_pyvcs_display_step": display_step3
 
         })
 
-    sdl2.SDL_DestroyTexture(texture)
-    sdl2.SDL_DestroyRenderer(renderer.renderer)
-    sdl2.SDL_DestroyWindow(window.window)
-    sdl2.ext.quit()
+        display._quit()
 
 if __name__ == '__main__':
-    main2()
+    main()
