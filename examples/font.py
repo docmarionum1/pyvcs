@@ -1,6 +1,6 @@
 import string
 
-pyvcs.set_background(255)
+pyvcs.background = 255
 
 space_down = False
 
