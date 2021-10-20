@@ -70,11 +70,11 @@ press_space_lines = []
 pyvcs.audio.volume = 1
 
 # Missle sound
-pyvcs.audio.channel_1.waveform = 4
+pyvcs.audio.channel_1.waveform = 0
 pyvcs.audio.channel_1.frequency = 32
 
 # collision sound
-pyvcs.audio.channel_2.waveform = 7
+pyvcs.audio.channel_2.waveform = 2
 pyvcs.audio.channel_2.frequency = 10
 
 pyvcs.wait_for_vsync()
