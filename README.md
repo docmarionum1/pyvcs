@@ -31,14 +31,24 @@ pip install -r <path_to_pyvcs>\requirements.txt
 From bash run:
 
 ```bash
-<path_to_pyvcs-python>/python.exe -m venv <path_to_virtual_env>
+<path_to_pyvcs-python>/python -m venv <path_to_virtual_env>
 source <path_to_virtual_env>/bin/activate
 pip install cython
 pip install --no-binary :all: --upgrade cffi==1.14.6 --no-use-pep517
 pip install --no-binary :all: -U numpy==1.21.2 --no-use-pep517
 pip install -r <path_to_pyvcs>/requirements.txt
 ```
+### Fedora
 
+From bash run:
+
+```bash
+<path_to_pyvcs-python>/python -m venv <path_to_virtual_env>
+pip install cython
+pip install --no-binary :all: --upgrade cffi==1.14.6 --no-use-pep517
+pip install --no-binary :all: -U numpy==1.21.2 --no-use-pep517
+pip install -r <path_to_pyvcs>/requirements.txt
+```
 ### Mac (Untested)
 
 From bash run:
