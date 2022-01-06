@@ -51,8 +51,6 @@ for i in range(16):
 # Set the color to black for the bottom
 loop += "pyvcs.wait_for_hsync()\npyvcs.background = 0"
 
-#pyvcs.wait_for_vsync()
-
 print(loop)
 
 while True:
