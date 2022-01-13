@@ -1,0 +1,1 @@
+hachibee-sphinx-theme==0.2.5
