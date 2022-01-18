@@ -477,9 +477,12 @@ def main():
                 "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
                 "_pyvcs_display_step": display_step3
             })
+            if (not sys.argv[0]=="pyvcs-python"):
+                print("PyVCS - Created by docmarionum1 and kevidryon2\nUsage: <path-to-pyvcs-python>/python pyvcs.py <file>\nYou should use the pyvcs-python interpreter and not the default one to run PyVCS correctly.")
+                SystemExit()
         except:
             print("PyVCS - Created by docmarionum1 and kevidryon2\nUsage: <path-to-pyvcs-python>/python pyvcs.py <file>")
-
+            SystemExit()
         display._quit()
 
 if __name__ == '__main__':
