@@ -468,16 +468,17 @@ def main():
 
     with audio_context:
         #dis.dis(open(sys.argv[1]).read())
-
-        exec(open(sys.argv[1]).read(), {
-            "USER_CODE": True,
-            "pyvcs": PYVCS(),
-            #"pyvcs":  Namespace(**globals()),
-            #"pyvcs": PYVCS(),
-            "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
-            "_pyvcs_display_step": display_step3
-
-        })
+        try:
+            exec(open(sys.argv[1]).read(), {
+                "USER_CODE": True,
+                "pyvcs": PYVCS(),
+                #"pyvcs":  Namespace(**globals()),
+                #"pyvcs": PYVCS(),
+                "__name__": ".".join(Path(sys.argv[1].replace(".py", "")).parts),
+                "_pyvcs_display_step": display_step3
+            })
+        except:
+            print("PyVCS - Created by docmarionum1 and kevidryon2\nUsage: <path-to-pyvcs-python>/python pyvcs.py <file>")
 
         display._quit()
 
