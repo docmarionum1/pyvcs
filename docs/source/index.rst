@@ -3,12 +3,19 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to pyvcs's documentation!
-=================================
+pyvcs (Python Video Computer System)
+====================================
+
+pyvcs (Python Video Computer System) is a fantasy console inspired by the Atari VCS (2600), written
+in Python and developed using Python.
+
+
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+
+   tutorial/index
 
 
 

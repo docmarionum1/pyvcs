@@ -46,6 +46,7 @@ extensions = [
     'sphinx.ext.imgmath',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
+    'myst_parser'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
