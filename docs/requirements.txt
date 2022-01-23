@@ -1,1 +1,2 @@
 hachibee-sphinx-theme==0.2.5
+myst-parser==0.16.1
